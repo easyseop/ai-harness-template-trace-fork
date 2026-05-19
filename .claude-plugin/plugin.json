@@ -1,0 +1,20 @@
+{
+  "name": "harness",
+  "version": "2.1.0",
+  "description": "Specification-first AI harness: 11 structural gates, 11 Ouroboros commands, 11 agent personas, and 3-tier architecture enforcement. v2.1: Pair Mode (Navigator-Driver + independent test design + /review command).",
+  "author": "studioKjm",
+  "license": "MIT",
+  "homepage": "https://github.com/studioKjm/ai-harness-template",
+  "repository": "https://github.com/studioKjm/ai-harness-template",
+  "keywords": [
+    "harness",
+    "ouroboros",
+    "specification-first",
+    "guardrails",
+    "3-tier-layered-architecture",
+    "ai-agent",
+    "claude-code",
+    "pair-programming",
+    "navigator-driver"
+  ]
+}
