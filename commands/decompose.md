@@ -10,8 +10,11 @@ description: Break seed AC into atomic layer-aware tasks BEFORE /run. USE WHENEV
 ## Trace Metadata
 
 - Rule ID: `RULE-DECOMP-001`
-- Runtime Trace: run `.harness/trace/record-runtime-trace.sh --step decompose --request-type task-decomposition --summary "<user request summary>"` before decomposition when the script exists.
-- AI-facing Trace: use `.harness/trace/latest-runtime-trace.json` when available; otherwise list only files actually read.
+- Runtime Trace 시작: 스크립트가 있으면 decomposition 전에 `.harness/trace/record-runtime-trace.sh --step decompose --request-type task-decomposition --summary "<user request summary>"`를 실행한다.
+- Loaded File Trace 기록: command/reference/agent 파일을 읽은 뒤, 스크립트가 있으면 `.harness/trace/mark-loaded-file.sh --path "<file>"`로 loaded 기록을 남긴다.
+- AI-facing Trace 출력: `.harness/trace/latest-runtime-trace-final.json`을 우선 참고하고, 없으면 `.harness/trace/latest-runtime-trace.json`을 참고한다. selected, loaded, applied evidence를 구분해서 설명한다.
+- Spec Evidence 출력: 명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 최종 응답에 `[Spec Evidence]`를 포함한다. 근거가 없으면 `[Spec Evidence]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않는다.
+- Final Trace Gate 검증: Spec Evidence를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 `python3 .harness/trace/finalize-runtime-trace.py --evidence-file .harness/trace/current-spec-evidence.md --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. Spec Evidence가 없으면 `python3 .harness/trace/finalize-runtime-trace.py --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. 실패하면 `Trace Verification: FAIL`을 보고하고 runtime verification이 된 것처럼 말하지 않는다.
 
 ## Instructions
 
@@ -28,16 +31,16 @@ You are the **Task Decomposer**. Your job is to break down seed spec acceptance 
 
 `RULE-DECOMP-001`
 
-**1. Atomic Unit Criteria**
+**1. `RULE-DECOMP-001-01` Atomic Unit Criteria**
 
 각 태스크는 다음 조건을 모두 만족해야 합니다:
-- [ ] **단일 레이어** — 한 태스크가 하나의 레이어(P/L/D)만 터치
-- [ ] **단일 AC** — 한 태스크가 하나의 Acceptance Criteria에 기여
-- [ ] **독립 테스트 가능** — 다른 태스크 완료 없이도 테스트 가능
-- [ ] **30분 이내 구현** — 너무 크면 더 분해
-- [ ] **명확한 완료 기준** — "~가 되면 완료"
+- [ ] `RULE-DECOMP-001-01-01` **단일 레이어** — 한 태스크가 하나의 레이어(P/L/D)만 터치
+- [ ] `RULE-DECOMP-001-01-02` **단일 AC** — 한 태스크가 하나의 Acceptance Criteria에 기여
+- [ ] `RULE-DECOMP-001-01-03` **독립 테스트 가능** — 다른 태스크 완료 없이도 테스트 가능
+- [ ] `RULE-DECOMP-001-01-04` **30분 이내 구현** — 너무 크면 더 분해
+- [ ] `RULE-DECOMP-001-01-05` **명확한 완료 기준** — "~가 되면 완료"
 
-**2. Decomposition Process**
+**2. `RULE-DECOMP-001-02` Decomposition Process**
 
 시드 스펙의 각 AC를 분해합니다:
 
@@ -51,7 +54,7 @@ Task 4 [Present]: 검색 API 엔드포인트 + 테스트
 Task 5 [Present]: 검색 UI 컴포넌트 + 테스트
 ```
 
-**3. Dependency Ordering**
+**3. `RULE-DECOMP-001-03` Dependency Ordering**
 
 태스크 간 의존성을 명시하고 실행 순서를 결정합니다:
 
@@ -129,12 +132,11 @@ decomposition:
 3. 각 태스크 완료 시 즉시 테스트 실행
 4. 태스크 실패 시 `/rollback`으로 해당 태스크만 되돌림
 
-### Replay Checkpoint
+### Replay 확인 지점
 
-After completing `/decompose`, suggest both options:
+`/decompose` 완료 후, `[Harness Trace]`의 `Next Step`에 아래 두 선택지를 함께 제안한다:
 
 ```text
-Next:
-1. Proceed to /run
-2. Run /replay-test decompose <case> to verify decomposition trace, required Rule IDs, atomic tasks, dependency ordering, and forbidden task patterns
+1. `/run`으로 진행
+2. `/replay-test decompose <case>`로 decomposition trace, 필수 Rule ID, atomic task, dependency ordering, 금지 task pattern을 검증
 ```

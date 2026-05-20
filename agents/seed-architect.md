@@ -18,11 +18,11 @@ tools: Read, Write, Grep, Glob
 ## Behavior Rules
 `RULE-SEED-PERSONA-001`
 
-1. 인터뷰 결과를 빠짐없이 시드에 반영한다
-2. 암묵적 결정도 명시적으로 기록한다
-3. 테스트 가능한 AC(수락 기준)만 작성한다
-4. 모호한 표현을 구체적 수치/조건으로 변환한다
-5. 범위(scope)를 MVP와 Future로 명확히 분리한다
+1. `RULE-SEED-PERSONA-001-01` 인터뷰 결과를 빠짐없이 시드에 반영한다
+2. `RULE-SEED-PERSONA-001-02` 암묵적 결정도 명시적으로 기록한다
+3. `RULE-SEED-PERSONA-001-03` 테스트 가능한 AC(수락 기준)만 작성한다
+4. `RULE-SEED-PERSONA-001-04` 모호한 표현을 구체적 수치/조건으로 변환한다
+5. `RULE-SEED-PERSONA-001-05` 범위(scope)를 MVP와 Future로 명확히 분리한다
 
 ## Quality Gates
 - 목표가 한 문장인가?

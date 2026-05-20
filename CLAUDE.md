@@ -17,23 +17,31 @@ AI 에이전트 하네스 엔지니어링 + Ouroboros(명세 기반 개발) 통�
 
 ## Harness Trace & Spec Evidence
 
-This repository preserves existing harness behavior. Do not delete, rewrite, summarize, or replace existing command/spec/agent/evaluation rules when adding trace metadata.
+이 레포는 기존 하네스 동작을 유지합니다. trace metadata를 추가하더라도 기존 command/spec/agent/evaluation 규칙을 삭제, 재작성, 요약 대체하지 마세요.
 
-### Trace Types
+### Trace 종류
 
-- **AI-facing Trace**: explanation shown to the user at major workflow steps.
-- **Runtime Trace**: execution log written by hook/script/router/loader from actual selected files. Prefer Runtime Trace as the source for AI-facing Trace when `.harness/trace/latest-runtime-trace.json` exists.
+- **AI-facing Trace**: 주요 workflow 단계에서 사용자에게 보여주는 설명용 trace입니다.
+- **Runtime Trace**: selected, loaded, applied evidence 기록을 `.harness/trace` 아래에 남기는 실행 로그입니다. 가능하면 `.harness/trace/latest-runtime-trace-final.json`을 우선 사용하고, 없으면 `.harness/trace/latest-runtime-trace.json`을 사용하세요.
 
-### Routing Principle
+### Runtime 신뢰도 수준
 
-Identify selected files by workflow step:
-- command files: `commands/<step>.md` or installed `.claude/commands/<step>.md`
-- reference files: seed specs, TRD, task files, architecture invariants, gate rule files relevant to the step
-- agent files: `agents/*.md`, methodology personas, or installed `.claude/agents/*.md` invoked by the step
+- `selected`: router가 선택한 command/reference/agent 파일입니다.
+- `loaded`: `.harness/trace/mark-loaded-file.sh --path <file>`로 읽었다고 명시 기록한 파일입니다.
+- `applied`: Spec Evidence에서 인용되고 `python3 .harness/trace/finalize-runtime-trace.py --evidence-file <file>`로 검증된 Rule ID입니다.
 
-### Required User Output
+Rule ID가 loaded 파일 또는 finalized runtime trace에 없으면 runtime-verified라고 설명하지 마세요.
 
-At each major step, output:
+### 라우팅 원칙
+
+workflow step 기준으로 selected 파일을 식별하세요.
+- command files: `commands/<step>.md` 또는 설치된 `.claude/commands/<step>.md`
+- reference files: 해당 단계와 관련된 seed spec, TRD, task file, architecture invariant, gate rule file
+- agent files: 해당 단계에서 호출된 `agents/*.md`, methodology persona, 또는 설치된 `.claude/agents/*.md`
+
+### 필수 사용자 출력
+
+각 주요 단계에서 아래 형식으로 출력하세요.
 
 ```text
 [Harness Trace]
@@ -43,26 +51,42 @@ Applied Command Files:
 Applied Reference Files:
 Applied Agent Files:
 Key Rules Applied:
+Trace Confidence:
+Trace Verification:
 Next Step:
 ```
 
-For decisions or judgments, output:
+명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 아래 형식의 `[Spec Evidence]`를 출력하세요. 근거가 없으면 `[Spec Evidence]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 마세요.
 
 ```text
 [Spec Evidence]
 1. <file_path>#<rule_id>
-   Rule: "<existing rule sentence or short summary>"
-   Applied because: <why this rule applies now>
+   Rule: "<기존 규칙 문장 또는 짧은 요약>"
+   Applied because: <이 규칙이 현재 작업에 적용되는 이유>
 ```
 
-If no explicit rule is found, do not invent one:
+부모 Rule ID와 더 구체적인 하위 Rule ID가 함께 있으면, 넓은 부모 ID만 인용하지 말고 `RULE-EVAL-PERSONA-001-02`처럼 현재 판단에 가장 구체적으로 적용되는 하위 Rule ID를 인용하세요.
 
-```text
-[Spec Evidence]
-No explicit spec rule found.
-Recommendation:
-- Suggest which file should receive a new explicit rule for this situation.
+Runtime Trace 도구가 있으면, Spec Evidence를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 아래 명령을 실행하세요.
+
+```bash
+python3 .harness/trace/finalize-runtime-trace.py \
+  --evidence-file .harness/trace/current-spec-evidence.md \
+  --require-loaded-selected command \
+  --policy .harness/trace/trace-policy.json \
+  --require-policy
 ```
+
+Spec Evidence를 출력하지 않은 경우에는 `--evidence-file` 없이 아래 명령을 실행하세요.
+
+```bash
+python3 .harness/trace/finalize-runtime-trace.py \
+  --require-loaded-selected command \
+  --policy .harness/trace/trace-policy.json \
+  --require-policy
+```
+
+finalized trace가 성공한 경우에만 검증된 trace로 사용하세요. 실패하면 누락된 loaded 파일 또는 불일치한 evidence와 함께 `Trace Verification: FAIL`을 출력하고, runtime verification이 된 것처럼 말하지 마세요. finalized trace가 없으면 runtime verification을 암시하지 말고 사용 가능한 confidence level(`selected_only` 또는 `loaded_files_recorded`)을 명시하세요.
 
 ## Structure
 

@@ -35,9 +35,11 @@ Driver가 SendMessage("모든 AC 완료") → Navigator가 최종 요약 응답
 
 ## Behavior Rules
 
+`RULE-RUN-PERSONA-NAVIGATOR-001`
+
 ### 메시지 수신 시 동작
 
-**1. AC 플랜 요청 수신 시** (Driver가 "AC-XXX를 구현하려 합니다" 전송):
+**1. `RULE-RUN-PERSONA-NAVIGATOR-001-01` AC 플랜 요청 수신 시** (Driver가 "AC-XXX를 구현하려 합니다" 전송):
 
 seed spec을 읽고 해당 AC에 대한 플랜 3개를 생성한다.
 
@@ -68,7 +70,7 @@ seed spec을 읽고 해당 AC에 대한 플랜 3개를 생성한다.
 3. {테스트 작성 지시}
 ```
 
-**2. AC 결과 보고 수신 시** (Driver가 구현 결과 전송):
+**2. `RULE-RUN-PERSONA-NAVIGATOR-001-02` AC 결과 보고 수신 시** (Driver가 구현 결과 전송):
 
 결과를 검토하고 아래 중 하나로 응답:
 
@@ -101,7 +103,7 @@ seed spec을 읽고 해당 AC에 대한 플랜 3개를 생성한다.
 **/unstuck 실행을 권장합니다.**
 ```
 
-**3. 최종 완료 수신 시** (Driver가 "모든 AC 완료" 전송):
+**3. `RULE-RUN-PERSONA-NAVIGATOR-001-03` 최종 완료 수신 시** (Driver가 "모든 AC 완료" 전송):
 
 ```
 ## Pair Mode 세션 요약
@@ -132,10 +134,10 @@ seed spec을 읽고 해당 AC에 대한 플랜 3개를 생성한다.
 - **완료 카운터**: 완료된 AC 수 (/review 트리거용)
 
 ## Constraints
-- 절대 코드를 직접 작성하지 않는다
-- 절대 Driver의 구현을 수정하지 않는다
-- 플랜 선택 시 seed spec의 ontology/constraints를 반드시 참조한다
-- Driver에게 응답 후 다음 SendMessage를 기다린다 — 먼저 보내지 않는다
+- `RULE-RUN-PERSONA-NAVIGATOR-001-04` 절대 코드를 직접 작성하지 않는다
+- `RULE-RUN-PERSONA-NAVIGATOR-001-05` 절대 Driver의 구현을 수정하지 않는다
+- `RULE-RUN-PERSONA-NAVIGATOR-001-06` 플랜 선택 시 seed spec의 ontology/constraints를 반드시 참조한다
+- `RULE-RUN-PERSONA-NAVIGATOR-001-07` Driver에게 응답 후 다음 SendMessage를 기다린다 — 먼저 보내지 않는다
 
 ## Seed Spec 참조
 

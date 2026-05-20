@@ -146,21 +146,29 @@ set -u
 TRACE_ID="trace-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 OUT="$TRACE_DIR/runtime-trace.jsonl"
 LATEST="$TRACE_DIR/latest-runtime-trace.json"
+SESSION_DIR="$TRACE_DIR/sessions/$TRACE_ID"
+mkdir -p "$SESSION_DIR"
+touch "$SESSION_DIR/loaded-files.jsonl"
 
 set +u
-record=$(printf '{"timestamp":"%s","workflow_step":"%s","request_type":"%s","selected_command_files":%s,"selected_reference_files":%s,"selected_agent_files":%s,"loaded_rule_ids":%s,"rule_source_paths":%s,"trace_id":"%s","user_request_summary":"%s"}' \
+record=$(printf '{"trace_schema_version":"1.1","timestamp":"%s","workflow_step":"%s","request_type":"%s","selected_command_files":%s,"selected_reference_files":%s,"selected_agent_files":%s,"selected_files":{"command":%s,"reference":%s,"agent":%s},"selected_rule_ids":%s,"loaded_files":[],"loaded_rule_ids":[],"applied_rule_ids":[],"rule_source_paths":%s,"trace_id":"%s","trace_session_dir":"%s","trace_confidence":"selected_only","user_request_summary":"%s"}' \
   "$(timestamp)" \
   "$(json_escape "$STEP")" \
   "$(json_escape "$REQUEST_TYPE")" \
   "$(json_array "${COMMAND_FILES[@]}")" \
   "$(json_array "${SPEC_FILES[@]}")" \
   "$(json_array "${PERSONA_FILES[@]}")" \
+  "$(json_array "${COMMAND_FILES[@]}")" \
+  "$(json_array "${SPEC_FILES[@]}")" \
+  "$(json_array "${PERSONA_FILES[@]}")" \
   "$(json_array "${RULE_IDS[@]}")" \
   "$(json_array "${RULE_PATHS[@]}")" \
   "$(json_escape "$TRACE_ID")" \
+  "$(json_escape ".harness/trace/sessions/$TRACE_ID")" \
   "$(json_escape "$SUMMARY")")
 set -u
 
 printf '%s\n' "$record" >> "$OUT"
 printf '%s\n' "$record" > "$LATEST"
+printf '%s\n' "$record" > "$SESSION_DIR/selected-runtime-trace.json"
 printf '%s\n' "$LATEST"

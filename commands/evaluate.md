@@ -9,8 +9,11 @@ description: Run 3-stage verification (Mechanical gates → Semantic AC complian
 ## Trace Metadata
 
 - Rule ID: `RULE-EVAL-001`
-- Runtime Trace: run `.harness/trace/record-runtime-trace.sh --step evaluate --request-type verification --summary "<user request summary>"` before Phase 0 when the script exists.
-- AI-facing Trace: use `.harness/trace/latest-runtime-trace.json` when available; otherwise list only files actually read.
+- Runtime Trace 시작: 스크립트가 있으면 Phase 0 전에 `.harness/trace/record-runtime-trace.sh --step evaluate --request-type verification --summary "<user request summary>"`를 실행한다.
+- Loaded File Trace 기록: command/reference/agent 파일을 읽은 뒤, 스크립트가 있으면 `.harness/trace/mark-loaded-file.sh --path "<file>"`로 loaded 기록을 남긴다.
+- AI-facing Trace 출력: `.harness/trace/latest-runtime-trace-final.json`을 우선 참고하고, 없으면 `.harness/trace/latest-runtime-trace.json`을 참고한다. selected, loaded, applied evidence를 구분해서 설명한다.
+- Spec Evidence 출력: 명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 최종 응답에 `[Spec Evidence]`를 포함한다. 근거가 없으면 `[Spec Evidence]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않는다.
+- Final Trace Gate 검증: Spec Evidence를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 `python3 .harness/trace/finalize-runtime-trace.py --evidence-file .harness/trace/current-spec-evidence.md --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. Spec Evidence가 없으면 `python3 .harness/trace/finalize-runtime-trace.py --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. 실패하면 `Trace Verification: FAIL`을 보고하고 runtime verification이 된 것처럼 말하지 않는다.
 
 ## Instructions
 
@@ -20,12 +23,12 @@ You are now the **Evaluator** agent. Verify the implementation against the seed 
 
 `RULE-EVAL-001`
 
-1. **Locate seed spec** — `.harness/ouroboros/seeds/seed-v*.yaml` (latest)
+1. `RULE-EVAL-001-01` **Locate seed spec** — `.harness/ouroboros/seeds/seed-v*.yaml` (latest)
    - If none → abort: "No seed to evaluate against. Run /interview → /seed first."
-2. **Check for prior evaluations** — `.harness/ouroboros/evaluations/`
+2. `RULE-EVAL-001-02` **Check for prior evaluations** — `.harness/ouroboros/evaluations/`
    - If recent (<1h) PASS with no code changes → skip re-evaluation
    - If recent FAIL → surface prior findings; focus on whether they were addressed
-3. **Detect scope** — which files changed since last commit? (`git diff --stat`)
+3. `RULE-EVAL-001-03` **Detect scope** — which files changed since last commit? (`git diff --stat`)
    - Narrow evaluation to changed files when possible
 
 ### Subagent Delegation
@@ -52,25 +55,25 @@ Main Agent (Evaluator)
 Run automated checks — these cost nothing and catch obvious issues:
 
 ```bash
-# 1. Harness gates
+# 1. RULE-EVAL-002-01 Harness gates
 .harness/detect-violations.sh
 
-# 2. Layer separation check
+# 2. RULE-EVAL-002-02 Layer separation check
 .harness/gates/check-layers.sh
 
-# 3. Lint (if available)
+# 3. RULE-EVAL-002-03 Lint (if available)
 # TypeScript: npx eslint . --quiet
 # Python: ruff check . || python -m flake8
 
-# 4. Type check (if available)
+# 4. RULE-EVAL-002-04 Type check (if available)
 # TypeScript: npx tsc --noEmit
 # Python: mypy . || pyright
 
-# 5. Build (if available)
+# 5. RULE-EVAL-002-05 Build (if available)
 # Next.js: npm run build
 # Python: python -m py_compile
 
-# 6. Tests (if available)
+# 6. RULE-EVAL-002-06 Tests (if available)
 # npm test || pytest
 ```
 
@@ -96,6 +99,8 @@ If Stage 1 fails → stop. Fix mechanical issues before proceeding.
 Read the seed spec from `.harness/ouroboros/seeds/` and verify:
 
 **2a. Acceptance Criteria Compliance**
+`RULE-EVAL-003-01`
+
 For each AC in the seed:
 ```
   AC-001: "{description}"
@@ -108,19 +113,27 @@ For each AC in the seed:
 ```
 
 **2b. Goal Alignment**
+`RULE-EVAL-003-02`
+
 - Does the implementation solve the stated goal?
 - Are there features NOT in the spec that were added? (scope creep)
 - Are there non_goals that were accidentally implemented?
 
 **2c. Constraint Compliance**
+`RULE-EVAL-003-03`
+
 - Check each `must` constraint → is it satisfied?
 - Check each `must_not` constraint → is it violated?
 
 **2d. Ontology Drift**
+`RULE-EVAL-003-04`
+
 - Do the actual data models match the seed's ontology?
 - Are entity names, field names, relationships preserved?
 
 **2e. Layer Architecture Compliance**
+`RULE-EVAL-003-05`
+
 - 모든 Presentation 코드가 presentation 디렉토리에 있는가?
 - 모든 Logic 코드가 logic/services 디렉토리에 있는가?
 - 모든 Data 코드가 data/repositories 디렉토리에 있는가?
@@ -214,12 +227,11 @@ verdict: "pass|fail"
 issues: []
 ```
 
-### Replay Checkpoint
+### Replay 확인 지점
 
-After completing `/evaluate`, suggest both options:
+`/evaluate` 완료 후, `[Harness Trace]`의 `Next Step`에 아래 두 선택지를 함께 제안한다:
 
 ```text
-Next:
-1. If PASS, prepare commit/PR; if FAIL, fix issues or proceed to /evolve
-2. Run /replay-test evaluate <case> to verify evaluator trace, expected PASS/FAIL status, fail reasons, and forbidden false positives
+1. PASS면 commit/PR 준비, FAIL이면 이슈를 수정하거나 `/evolve`로 진행
+2. `/replay-test evaluate <case>`로 evaluator trace, expected PASS/FAIL status, fail reason, 금지 false positive를 검증
 ```

@@ -12,8 +12,11 @@ description: Generate layer-aware technical design document from seed spec. USE 
 ## Trace Metadata
 
 - Rule ID: `RULE-TRD-001`
-- Runtime Trace: run `.harness/trace/record-runtime-trace.sh --step trd --request-type technical-design --summary "<user request summary>"` before Phase 1 when the script exists.
-- AI-facing Trace: use `.harness/trace/latest-runtime-trace.json` when available; otherwise list only files actually read.
+- Runtime Trace 시작: 스크립트가 있으면 Phase 1 전에 `.harness/trace/record-runtime-trace.sh --step trd --request-type technical-design --summary "<user request summary>"`를 실행한다.
+- Loaded File Trace 기록: command/reference/agent 파일을 읽은 뒤, 스크립트가 있으면 `.harness/trace/mark-loaded-file.sh --path "<file>"`로 loaded 기록을 남긴다.
+- AI-facing Trace 출력: `.harness/trace/latest-runtime-trace-final.json`을 우선 참고하고, 없으면 `.harness/trace/latest-runtime-trace.json`을 참고한다. selected, loaded, applied evidence를 구분해서 설명한다.
+- Spec Evidence 출력: 명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 최종 응답에 `[Spec Evidence]`를 포함한다. 근거가 없으면 `[Spec Evidence]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않는다.
+- Final Trace Gate 검증: Spec Evidence를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 `python3 .harness/trace/finalize-runtime-trace.py --evidence-file .harness/trace/current-spec-evidence.md --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. Spec Evidence가 없으면 `python3 .harness/trace/finalize-runtime-trace.py --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. 실패하면 `Trace Verification: FAIL`을 보고하고 runtime verification이 된 것처럼 말하지 않는다.
 
 ## 워크플로우
 
@@ -21,12 +24,12 @@ description: Generate layer-aware technical design document from seed spec. USE 
 
 `RULE-TRD-001`
 
-1. **프로젝트 현황 파악**
+1. `RULE-TRD-001-01` **프로젝트 현황 파악**
    - 관련 문서 확인: `docs/`, `ARCHITECTURE_INVARIANTS.md`, seed spec (`.harness/ouroboros/seeds/`)
    - 현재 코드베이스 구조와 상태를 파악합니다
    - 기존 레이어 분리 상태를 점검합니다
 
-2. **요구사항 확인**
+2. `RULE-TRD-001-02` **요구사항 확인**
    - seed spec이 있다면 `goal`, `constraints`, `acceptance_criteria` 기반으로 진행
    - 없다면 사용자에게 기능 설명을 요청합니다
 
@@ -130,11 +133,11 @@ TRD 작성 후, 필요한 모듈들에 대한 테스트를 설계합니다:
 
 `RULE-TRD-002`
 
-1. **논의 먼저, 설계서 나중** — 바로 문서를 작성하지 않고 논의점을 먼저 제시
-2. **3-tier 필수 준수** — Presentation / Logic / Data 레이어 분리
-3. **레이어 스킵 금지** — Presentation → Logic → Data 순서로만 호출
-4. **테스트 함께 작성** — 구현과 테스트는 한 쌍
-5. **쉬운 설명** — resource 소모와 impact 위주로 설명
+1. `RULE-TRD-002-01` **논의 먼저, 설계서 나중** — 바로 문서를 작성하지 않고 논의점을 먼저 제시
+2. `RULE-TRD-002-02` **3-tier 필수 준수** — Presentation / Logic / Data 레이어 분리
+3. `RULE-TRD-002-03` **레이어 스킵 금지** — Presentation → Logic → Data 순서로만 호출
+4. `RULE-TRD-002-04` **테스트 함께 작성** — 구현과 테스트는 한 쌍
+5. `RULE-TRD-002-05` **쉬운 설명** — resource 소모와 impact 위주로 설명
 
 ---
 
@@ -144,12 +147,11 @@ TRD 작성 후, 필요한 모듈들에 대한 테스트를 설계합니다:
 - seed spec 업데이트: `architecture` 섹션 채우기
 - 테스트 계획 포함
 
-### Replay Checkpoint
+### Replay 확인 지점
 
-After completing `/trd`, suggest both options:
+`/trd` 완료 후, `[Harness Trace]`의 `Next Step`에 아래 두 선택지를 함께 제안한다:
 
 ```text
-Next:
-1. Proceed to /decompose
-2. Run /replay-test trd <case> to verify TRD trace, 3-tier mapping, design decisions, and forbidden architecture patterns
+1. `/decompose`로 진행
+2. `/replay-test trd <case>`로 TRD trace, 3-tier mapping, design decision, 금지 architecture pattern을 검증
 ```
