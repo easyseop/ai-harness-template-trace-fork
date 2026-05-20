@@ -342,6 +342,7 @@ if [ -d "$HARNESS_DIR/trace" ]; then
   mkdir -p "$TARGET/.harness/trace"
   cp "$HARNESS_DIR/trace/"* "$TARGET/.harness/trace/" 2>/dev/null || true
   chmod +x "$TARGET/.harness/trace/"*.sh 2>/dev/null || true
+  chmod +x "$TARGET/.harness/trace/"*.py 2>/dev/null || true
   success "Runtime Trace tools installed"
 fi
 

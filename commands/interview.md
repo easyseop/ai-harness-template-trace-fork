@@ -10,8 +10,11 @@ argument-hint: [topic or feature description]
 ## Trace Metadata
 
 - Rule ID: `RULE-INTERVIEW-001`
-- Runtime Trace: run `.harness/trace/record-runtime-trace.sh --step interview --request-type requirements-clarification --summary "<user request summary>"` before Phase 0 when the script exists.
-- AI-facing Trace: use `.harness/trace/latest-runtime-trace.json` when available; otherwise list only files actually read.
+- Runtime Trace 시작: 스크립트가 있으면 Phase 0 전에 `.harness/trace/record-runtime-trace.sh --step interview --request-type requirements-clarification --summary "<user request summary>"`를 실행한다.
+- Loaded File Trace 기록: command/reference/agent 파일을 읽은 뒤, 스크립트가 있으면 `.harness/trace/mark-loaded-file.sh --path "<file>"`로 loaded 기록을 남긴다.
+- AI-facing Trace 출력: `.harness/trace/latest-runtime-trace-final.json`을 우선 참고하고, 없으면 `.harness/trace/latest-runtime-trace.json`을 참고한다. selected, loaded, applied evidence를 구분해서 설명한다.
+- Spec Evidence 출력: 명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 최종 응답에 `[Spec Evidence]`를 포함한다. 근거가 없으면 `[Spec Evidence]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않는다.
+- Final Trace Gate 검증: Spec Evidence를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 `python3 .harness/trace/finalize-runtime-trace.py --evidence-file .harness/trace/current-spec-evidence.md --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. Spec Evidence가 없으면 `python3 .harness/trace/finalize-runtime-trace.py --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. 실패하면 `Trace Verification: FAIL`을 보고하고 runtime verification이 된 것처럼 말하지 않는다.
 
 ## Instructions
 
@@ -23,21 +26,21 @@ You are now the **Interviewer** agent. Your ONLY job is to ask questions — nev
 
 Before asking any new questions, check existing state:
 
-1. **Check `.harness/ouroboros/interviews/`** — are there prior interviews?
+1. `RULE-INTERVIEW-001-01` **Check `.harness/ouroboros/interviews/`** — are there prior interviews?
    - If latest interview's topic matches current request → offer to **resume** (show ambiguity score, list unanswered dimensions)
    - If topic differs → start **new** interview
-2. **Check `.harness/ouroboros/seeds/`** — is there already a seed for this topic?
+2. `RULE-INTERVIEW-001-02` **Check `.harness/ouroboros/seeds/`** — is there already a seed for this topic?
    - If yes → ask user: "A seed already exists. Extend (new version) or new feature?"
-3. **Detect greenfield vs brownfield** — git log empty? no source dirs? → greenfield
+3. `RULE-INTERVIEW-001-03` **Detect greenfield vs brownfield** — git log empty? no source dirs? → greenfield
 
-Skip Phase 0 only if user explicitly says "fresh start".
+`RULE-INTERVIEW-001-04` Skip Phase 0 only if user explicitly says "fresh start".
 
 ### Rules
 `RULE-INTERVIEW-002`
 
-1. **절대 답을 주지 않는다** — 질문만 한다
-2. **숨겨진 가정을 드러낸다** — 사용자가 당연하다고 생각하는 것을 질문한다
-3. **모호성을 수치로 측정한다** — 각 차원의 명확도를 0-1로 추적한다
+1. `RULE-INTERVIEW-002-01` **절대 답을 주지 않는다** — 질문만 한다
+2. `RULE-INTERVIEW-002-02` **숨겨진 가정을 드러낸다** — 사용자가 당연하다고 생각하는 것을 질문한다
+3. `RULE-INTERVIEW-002-03` **모호성을 수치로 측정한다** — 각 차원의 명확도를 0-1로 추적한다
 
 ### Ambiguity Scoring
 
@@ -136,12 +139,11 @@ assumptions_surfaced:
   - "..."
 ```
 
-### Replay Checkpoint
+### Replay 확인 지점
 
-After completing `/interview`, suggest both options:
+`/interview` 완료 후, `[Harness Trace]`의 `Next Step`에 아래 두 선택지를 함께 제안한다:
 
 ```text
-Next:
-1. Proceed to /seed
-2. Run /replay-test interview <case> to verify interview trace, request classification, required questions, and forbidden questions
+1. `/seed`로 진행
+2. `/replay-test interview <case>`로 interview trace, request classification, 필수 질문, 금지 질문을 검증
 ```

@@ -22,12 +22,13 @@ from typing import Any
 from datetime import datetime, timezone
 
 from output_assert import check_expected_result, check_output, load_output
-from trace_assert import check_trace, load_trace, rule_ids
+from trace_assert import applied_rule_ids, check_trace, load_trace, rule_ids
 
 
 ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DIR = ROOT / "tests" / "results"
 EXECUTION_MODES = {"captured", "claude_mediated", "claude_cli"}
+RULE_RE = re.compile(r"RULE-[A-Z0-9-]+-[0-9]+")
 
 
 def parse_scalar(value: str) -> Any:
@@ -156,6 +157,159 @@ def sha256_file(path: Path | None) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def as_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item)]
+    return [str(value)] if str(value) else []
+
+
+def rule_ids_from_text(text: str) -> set[str]:
+    return set(RULE_RE.findall(text))
+
+
+def rule_ids_in_file(path: Path | None) -> set[str]:
+    if not path or not path.exists() or not path.is_file():
+        return set()
+    return rule_ids_from_text(path.read_text(encoding="utf-8", errors="ignore"))
+
+
+def added_rule_ids_from_git_diff(path: Path | None) -> set[str]:
+    if not path or not path.exists():
+        return set()
+    try:
+        rel = relative(path)
+        diff = subprocess.check_output(
+            ["git", "diff", "--unified=0", "HEAD", "--", rel],
+            cwd=ROOT,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return set()
+
+    added_lines = [
+        line[1:]
+        for line in diff.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    ]
+    return rule_ids_from_text("\n".join(added_lines))
+
+
+def expected_rule_ids(case_data: dict[str, Any]) -> set[str]:
+    expected = case_data.get("expected_trace", {}) or {}
+    ids: set[str] = set()
+    for key in ["must_include_rule_ids", "must_include_loaded_rule_ids", "must_include_applied_rule_ids"]:
+        ids.update(as_list(expected.get(key)))
+    return ids
+
+
+def changed_rule_inputs(
+    case_data: dict[str, Any],
+    changed_rule_files: list[str],
+    changed_rule_ids: list[str],
+) -> tuple[list[str], list[str]]:
+    files = as_list(case_data.get("changed_rule_files")) + changed_rule_files
+    ids = as_list(case_data.get("changed_rule_ids")) + changed_rule_ids
+    return sorted(set(files)), sorted(set(ids))
+
+
+def check_changed_rule_coverage(
+    case_data: dict[str, Any],
+    trace: dict[str, Any],
+    changed_rule_files: list[str],
+    changed_rule_ids: list[str],
+) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+    files, explicit_ids = changed_rule_inputs(case_data, changed_rule_files, changed_rule_ids)
+    expected_ids = expected_rule_ids(case_data)
+    actual_ids = rule_ids(trace)
+    results: list[dict[str, str]] = []
+    coverage: list[dict[str, Any]] = []
+
+    for path_value in files:
+        path = resolve_path(path_value)
+        file_ids = sorted(rule_ids_in_file(path))
+        added_ids = sorted(added_rule_ids_from_git_diff(path))
+        checked_ids = sorted(set(explicit_ids) or set(added_ids))
+        mode = "explicit_rule_ids" if explicit_ids else "git_added_rule_ids"
+
+        if checked_ids:
+            for rule_id in checked_ids:
+                if explicit_ids and files:
+                    results.append({
+                        "section": "Harness Trace Check",
+                        "status": "PASS" if rule_id in file_ids else "FAIL",
+                        "item": f"changed rule exists in {path_value}: {rule_id}",
+                    })
+                results.append({
+                    "section": "Harness Trace Check",
+                    "status": "PASS" if rule_id in expected_ids else "FAIL",
+                    "item": f"changed rule expected {rule_id} from {path_value}",
+                })
+                results.append({
+                    "section": "Harness Trace Check",
+                    "status": "PASS" if rule_id in actual_ids else "FAIL",
+                    "item": f"changed rule traced {rule_id} from {path_value}",
+                })
+        elif file_ids:
+            mode = "file_rule_presence"
+            expected_overlap = sorted(set(file_ids) & expected_ids)
+            actual_overlap = sorted(set(file_ids) & actual_ids)
+            results.append({
+                "section": "Harness Trace Check",
+                "status": "PASS" if expected_overlap else "FAIL",
+                "item": f"changed file expected at least one Rule ID from {path_value}",
+            })
+            results.append({
+                "section": "Harness Trace Check",
+                "status": "PASS" if actual_overlap else "FAIL",
+                "item": f"changed file traced at least one Rule ID from {path_value}",
+            })
+        else:
+            mode = "no_rule_ids_found"
+            results.append({
+                "section": "Harness Trace Check",
+                "status": "FAIL",
+                "item": f"changed rule file has no Rule IDs: {path_value}",
+            })
+
+        coverage.append({
+            "path": path_value,
+            "sha256": sha256_file(path),
+            "file_rule_ids": file_ids,
+            "git_added_rule_ids": added_ids,
+            "explicit_rule_ids": explicit_ids,
+            "checked_rule_ids": checked_ids,
+            "coverage_mode": mode,
+        })
+
+    for rule_id in explicit_ids:
+        if files:
+            continue
+        results.append({
+            "section": "Harness Trace Check",
+            "status": "PASS" if rule_id in expected_ids else "FAIL",
+            "item": f"changed rule expected {rule_id}",
+        })
+        results.append({
+            "section": "Harness Trace Check",
+            "status": "PASS" if rule_id in actual_ids else "FAIL",
+            "item": f"changed rule traced {rule_id}",
+        })
+        coverage.append({
+            "path": "",
+            "sha256": "",
+            "file_rule_ids": [],
+            "git_added_rule_ids": [],
+            "explicit_rule_ids": explicit_ids,
+            "checked_rule_ids": explicit_ids,
+            "coverage_mode": "explicit_rule_ids",
+        })
+
+    return results, coverage
 
 
 def git_commit() -> str:
@@ -288,16 +442,22 @@ def render_trace_markdown(trace: dict[str, Any], output: str) -> str:
     lines = ["# Actual Trace", ""]
     if trace:
         detected_rule_ids = sorted(rule_ids(trace))
+        detected_applied_rule_ids = sorted(applied_rule_ids(trace))
         lines.extend([
             "## Harness Trace",
             "",
             f"- workflow_step: {trace.get('workflow_step', '')}",
             f"- request_type: {trace.get('request_type', '')}",
             f"- trace_id: {trace.get('trace_id', '')}",
+            f"- trace_confidence: {trace.get('trace_confidence', '')}",
             f"- selected_command_files: {trace.get('selected_command_files', [])}",
             f"- selected_reference_files: {trace.get('selected_reference_files', [])}",
             f"- selected_agent_files: {trace.get('selected_agent_files', [])}",
-            f"- loaded_rule_ids: {detected_rule_ids}",
+            f"- selected_rule_ids: {trace.get('selected_rule_ids', [])}",
+            f"- loaded_rule_ids: {trace.get('loaded_rule_ids', [])}",
+            f"- all_detected_rule_ids: {detected_rule_ids}",
+            f"- applied_rule_ids: {detected_applied_rule_ids}",
+            f"- selected_not_loaded: {trace.get('selected_not_loaded', [])}",
             "",
             "```json",
             json.dumps(trace, ensure_ascii=False, indent=2),
@@ -513,6 +673,7 @@ def write_artifacts(
     mode: str,
     run_dir_arg: str | None,
     promote_baseline: bool,
+    changed_rule_coverage: list[dict[str, Any]],
 ) -> dict[str, str]:
     test_id = str(case_data.get("test_id", "unknown-test"))
     if run_dir_arg:
@@ -537,6 +698,7 @@ def write_artifacts(
     summary_md = render_summary(case_data, run_id, status, results)
 
     actual_rule_ids = sorted(rule_ids(trace))
+    actual_applied_rule_ids = sorted(applied_rule_ids(trace))
 
     artifact_paths = {
         "replay_result": relative(run_dir / "replay_result.yaml"),
@@ -568,9 +730,11 @@ def write_artifacts(
         "input_fixtures": case_data.get("input_fixtures", []) or [],
         "expected_trace": case_data.get("expected_trace", {}) or {},
         "actual_rule_ids": actual_rule_ids,
+        "actual_applied_rule_ids": actual_applied_rule_ids,
         "trace_assertions": split_assertions(results, "Harness Trace Check"),
         "output_assertions": split_assertions(results, "Output Check"),
         "forbidden_pattern_assertions": split_assertions(results, "Forbidden Pattern Check"),
+        "changed_rule_coverage": changed_rule_coverage,
         "lineage": lineage,
         "result_artifact_paths": artifact_paths,
     }
@@ -608,6 +772,18 @@ def main() -> int:
     parser.add_argument("--actual-output", help="Actual target-step output produced by the replay")
     parser.add_argument("--actual-trace", help="Actual Harness Trace / Spec Evidence produced by the replay")
     parser.add_argument("--promote-baseline", action="store_true", help="Update tests/results/baseline/<test_id>/ from this run")
+    parser.add_argument(
+        "--changed-rule-file",
+        action="append",
+        default=[],
+        help="Rule/spec file changed before this replay. Added Rule IDs from git diff must be expected and traced.",
+    )
+    parser.add_argument(
+        "--changed-rule-id",
+        action="append",
+        default=[],
+        help="Specific changed Rule ID that this replay must expect and trace.",
+    )
     args = parser.parse_args()
 
     case_path = resolve_case(args.target_or_path, args.case)
@@ -623,6 +799,7 @@ def main() -> int:
 
     results: list[dict[str, str]] = []
     trace: dict[str, Any] = {}
+    changed_rule_coverage: list[dict[str, Any]] = []
 
     default_run_dir = resolve_path(args.run_dir) if args.run_dir else None
     expected_output_path = resolve_path(
@@ -658,6 +835,14 @@ def main() -> int:
         trace = {"raw_text": output, "loaded_rule_ids": []}
         results.extend(check_trace(trace, case_data.get("expected_trace", {}) or {}))
 
+    changed_results, changed_rule_coverage = check_changed_rule_coverage(
+        case_data,
+        trace,
+        args.changed_rule_file,
+        args.changed_rule_id,
+    )
+    results.extend(changed_results)
+
     if output:
         results.extend(check_output(output, case_data.get("expected_output", {}) or {}))
         expected_result = case_data.get("expected_result", {}) or {}
@@ -678,6 +863,7 @@ def main() -> int:
         mode=mode,
         run_dir_arg=args.run_dir,
         promote_baseline=args.promote_baseline,
+        changed_rule_coverage=changed_rule_coverage,
     )
 
     report = render(case_data, results)

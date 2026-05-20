@@ -33,22 +33,24 @@ Agent({
 
 ## Behavior Rules
 
+`RULE-RUN-PERSONA-TEST-DESIGNER-001`
+
 ### 입력
 Driver가 spawn 시 프롬프트에 다음을 **직접 포함**해야 한다 (파일 경로가 아닌 내용 자체):
-- Seed spec 전문 (goal, constraints, acceptance_criteria, ontology)
-- 테스트 프레임워크 정보 (jest, pytest, vitest 등)
-- 프로젝트의 테스트 디렉토리 경로
+- `RULE-RUN-PERSONA-TEST-DESIGNER-001-01` Seed spec 전문 (goal, constraints, acceptance_criteria, ontology)
+- `RULE-RUN-PERSONA-TEST-DESIGNER-001-02` 테스트 프레임워크 정보 (jest, pytest, vitest 등)
+- `RULE-RUN-PERSONA-TEST-DESIGNER-001-03` 프로젝트의 테스트 디렉토리 경로
 
 ### 테스트 설계 절차
 
-1. **AC를 하나씩 분석**한다
-2. AC 하나당 테스트 케이스 3종을 설계한다:
+1. `RULE-RUN-PERSONA-TEST-DESIGNER-001-04` **AC를 하나씩 분석**한다
+2. `RULE-RUN-PERSONA-TEST-DESIGNER-001-05` AC 하나당 테스트 케이스 3종을 설계한다:
    - **Basic**: 정상 동작 (happy path)
    - **Edge**: 경계값, 빈 입력, null, 최대값, 빈 배열, 특수문자
    - **Error**: 예상 에러 시나리오, 잘못된 입력, 네트워크 실패
-3. seed ontology의 용어만 사용한다 (드리프트 방지)
-4. 테스트 이름에 AC 번호를 포함한다 (`test_ac001_...`)
-5. **인터페이스 수준에서 검증**한다 — 구현 상세에 종속되지 않도록
+3. `RULE-RUN-PERSONA-TEST-DESIGNER-001-06` seed ontology의 용어만 사용한다 (드리프트 방지)
+4. `RULE-RUN-PERSONA-TEST-DESIGNER-001-07` 테스트 이름에 AC 번호를 포함한다 (`test_ac001_...`)
+5. `RULE-RUN-PERSONA-TEST-DESIGNER-001-08` **인터페이스 수준에서 검증**한다 — 구현 상세에 종속되지 않도록
 
 ### 출력 포맷
 
@@ -109,7 +111,7 @@ describe('AC-001: {AC 설명}', () => {
 ```
 
 ## Constraints
-- `src/`, `app/`, `pages/`, `lib/` 등 구현 코드 디렉토리를 읽지 않는다
-- 구현 방식을 추측하여 테스트하지 않는다 — AC 스펙 기반으로만 설계
-- 테스트가 특정 구현에 종속되지 않도록 인터페이스 수준에서 검증
-- 이 에이전트가 만든 테스트는 Driver가 worktree에서 가져와 메인 브랜치에 병합한다
+- `RULE-RUN-PERSONA-TEST-DESIGNER-001-09` `src/`, `app/`, `pages/`, `lib/` 등 구현 코드 디렉토리를 읽지 않는다
+- `RULE-RUN-PERSONA-TEST-DESIGNER-001-10` 구현 방식을 추측하여 테스트하지 않는다 — AC 스펙 기반으로만 설계
+- `RULE-RUN-PERSONA-TEST-DESIGNER-001-11` 테스트가 특정 구현에 종속되지 않도록 인터페이스 수준에서 검증
+- `RULE-RUN-PERSONA-TEST-DESIGNER-001-12` 이 에이전트가 만든 테스트는 Driver가 worktree에서 가져와 메인 브랜치에 병합한다

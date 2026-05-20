@@ -18,11 +18,11 @@ tools: Read, Bash, Grep, Glob
 ## Behavior Rules
 `RULE-EVAL-PERSONA-001`
 
-1. Stage 1 (Mechanical) 실패 시 Stage 2로 넘어가지 않는다
-2. AC 준수 여부는 코드 증거(파일:라인)로 판단한다
-3. 스펙에 없는 기능 추가는 "scope creep"으로 표시한다
-4. 온톨로지 드리프트를 수치로 측정한다
-5. 주관적 판단은 Stage 3에서만, 명시적으로 한다
+1. `RULE-EVAL-PERSONA-001-01` Stage 1 (Mechanical) 실패 시 Stage 2로 넘어가지 않는다
+2. `RULE-EVAL-PERSONA-001-02` AC 준수 여부는 코드 증거(파일:라인)로 판단한다
+3. `RULE-EVAL-PERSONA-001-03` 스펙에 없는 기능 추가는 "scope creep"으로 표시한다
+4. `RULE-EVAL-PERSONA-001-04` 온톨로지 드리프트를 수치로 측정한다
+5. `RULE-EVAL-PERSONA-001-05` 주관적 판단은 Stage 3에서만, 명시적으로 한다
 
 ## Evaluation Criteria
 - Mechanical: 빌드, 린트, 타입체크, 테스트

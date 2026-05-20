@@ -9,8 +9,11 @@ description: Execute seed spec via Double Diamond (Discover → Define → Desig
 ## Trace Metadata
 
 - Rule ID: `RULE-RUN-001`
-- Runtime Trace: run `.harness/trace/record-runtime-trace.sh --step run --request-type implementation --summary "<user request summary>"` before Phase 0 when the script exists.
-- AI-facing Trace: use `.harness/trace/latest-runtime-trace.json` when available; otherwise list only files actually read.
+- Runtime Trace 시작: 스크립트가 있으면 Phase 0 전에 `.harness/trace/record-runtime-trace.sh --step run --request-type implementation --summary "<user request summary>"`를 실행한다.
+- Loaded File Trace 기록: command/reference/agent 파일을 읽은 뒤, 스크립트가 있으면 `.harness/trace/mark-loaded-file.sh --path "<file>"`로 loaded 기록을 남긴다.
+- AI-facing Trace 출력: `.harness/trace/latest-runtime-trace-final.json`을 우선 참고하고, 없으면 `.harness/trace/latest-runtime-trace.json`을 참고한다. selected, loaded, applied evidence를 구분해서 설명한다.
+- Spec Evidence 출력: 명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 최종 응답에 `[Spec Evidence]`를 포함한다. 근거가 없으면 `[Spec Evidence]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않는다.
+- Final Trace Gate 검증: Spec Evidence를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 `python3 .harness/trace/finalize-runtime-trace.py --evidence-file .harness/trace/current-spec-evidence.md --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. Spec Evidence가 없으면 `python3 .harness/trace/finalize-runtime-trace.py --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. 실패하면 `Trace Verification: FAIL`을 보고하고 runtime verification이 된 것처럼 말하지 않는다.
 
 ## Instructions
 
@@ -20,27 +23,27 @@ You are now the **Executor**. Follow the Double Diamond methodology strictly.
 
 `RULE-RUN-001`
 
-1. **Read latest seed** from `.harness/ouroboros/seeds/seed-v*.yaml`
-2. **Check for prior run artifacts**:
+1. `RULE-RUN-001-01` **Read latest seed** from `.harness/ouroboros/seeds/seed-v*.yaml`
+2. `RULE-RUN-001-02` **Check for prior run artifacts**:
    - Uncommitted changes? (`git status`) — existing work to resume?
    - Decomposed tasks in `.harness/ouroboros/tasks/`? — pick up unfinished
    - Prior evaluation results? — check if failed tasks need retry
-3. **Determine mode**:
+3. `RULE-RUN-001-03` **Determine mode**:
    - No prior work → **fresh run**
    - Partial work + decomposed tasks → **resume** (skip completed, continue pending)
    - Uncommitted + no tasks → ask user: continue manually or `/rollback` first?
-4. **Determine Pair Mode** (아래 참조)
+4. `RULE-RUN-001-04` **Determine Pair Mode** (아래 참조)
 
 ### Prerequisites
 `RULE-RUN-002`
 
-1. Seed spec must exist in `.harness/ouroboros/seeds/`
-2. Read the latest seed spec before starting
-3. If no seed exists, prompt user to run `/interview` then `/seed`
-4. **TRD must exist** — check `docs/TRD.md`
+1. `RULE-RUN-002-01` Seed spec must exist in `.harness/ouroboros/seeds/`
+2. `RULE-RUN-002-02` Read the latest seed spec before starting
+3. `RULE-RUN-002-03` If no seed exists, prompt user to run `/interview` then `/seed`
+4. `RULE-RUN-002-04` **TRD must exist** — check `docs/TRD.md`
    - Missing → **STOP**: "먼저 `/trd`를 실행하세요. 기술 설계 없이 구현하면 레이어 경계 위반이 발생합니다."
    - Exception: all ACs are `low` complexity AND single-layer change only
-5. **Decomposed tasks must exist** — check `.harness/ouroboros/tasks/`
+5. `RULE-RUN-002-05` **Decomposed tasks must exist** — check `.harness/ouroboros/tasks/`
    - Missing → **STOP**: "먼저 `/decompose`를 실행하세요. 태스크 분해 없이 진행하면 메가 프롬프트와 롤백 불가 상태가 발생합니다."
    - Exception: same as above (all low + single-layer)
 
@@ -179,12 +182,12 @@ Direct AC:    {목록}
 **Rules during Direct Deliver**:
 `RULE-RUN-003`
 
-1. 시드 스펙에 없는 기능을 추가하지 않는다
-2. AC를 만족하지 않는 구현은 미완성이다
-3. 각 AC 완료 시 체크 표시한다
-4. **구현 순서**: Data → Logic → Presentation (의존성 방향 순)
-5. **각 모듈 구현 직후 해당 테스트를 작성한다** — 일괄 작성 금지
-6. **레이어 경계를 넘는 import가 발생하면 즉시 수정한다**
+1. `RULE-RUN-003-01` 시드 스펙에 없는 기능을 추가하지 않는다
+2. `RULE-RUN-003-02` AC를 만족하지 않는 구현은 미완성이다
+3. `RULE-RUN-003-03` 각 AC 완료 시 체크 표시한다
+4. `RULE-RUN-003-04` **구현 순서**: Data → Logic → Presentation (의존성 방향 순)
+5. `RULE-RUN-003-05` **각 모듈 구현 직후 해당 테스트를 작성한다** — 일괄 작성 금지
+6. `RULE-RUN-003-06` **레이어 경계를 넘는 import가 발생하면 즉시 수정한다**
 
 ---
 
@@ -404,12 +407,11 @@ Options:
 
 Prefer option 1. Only choose 2 if the spec is fundamentally wrong.
 
-### Replay Checkpoint
+### Replay 확인 지점
 
-After completing `/run`, suggest both options:
+`/run` 완료 후, `[Harness Trace]`의 `Next Step`에 아래 두 선택지를 함께 제안한다:
 
 ```text
-Next:
-1. Proceed to /evaluate
-2. Run /replay-test run <case> to verify implementation trace, required Rule IDs, task completion evidence, and forbidden implementation patterns
+1. `/evaluate`로 진행
+2. `/replay-test run <case>`로 implementation trace, 필수 Rule ID, task completion evidence, 금지 implementation pattern을 검증
 ```

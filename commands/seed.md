@@ -9,8 +9,11 @@ description: Crystallize interview results into an IMMUTABLE seed spec (YAML). R
 ## Trace Metadata
 
 - Rule ID: `RULE-SEED-001`
-- Runtime Trace: run `.harness/trace/record-runtime-trace.sh --step seed --request-type spec-generation --summary "<user request summary>"` before Phase 0 when the script exists.
-- AI-facing Trace: use `.harness/trace/latest-runtime-trace.json` when available; otherwise list only files actually read.
+- Runtime Trace 시작: 스크립트가 있으면 Phase 0 전에 `.harness/trace/record-runtime-trace.sh --step seed --request-type spec-generation --summary "<user request summary>"`를 실행한다.
+- Loaded File Trace 기록: command/reference/agent 파일을 읽은 뒤, 스크립트가 있으면 `.harness/trace/mark-loaded-file.sh --path "<file>"`로 loaded 기록을 남긴다.
+- AI-facing Trace 출력: `.harness/trace/latest-runtime-trace-final.json`을 우선 참고하고, 없으면 `.harness/trace/latest-runtime-trace.json`을 참고한다. selected, loaded, applied evidence를 구분해서 설명한다.
+- Spec Evidence 출력: 명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 최종 응답에 `[Spec Evidence]`를 포함한다. 근거가 없으면 `[Spec Evidence]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않는다.
+- Final Trace Gate 검증: Spec Evidence를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 `python3 .harness/trace/finalize-runtime-trace.py --evidence-file .harness/trace/current-spec-evidence.md --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. Spec Evidence가 없으면 `python3 .harness/trace/finalize-runtime-trace.py --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. 실패하면 `Trace Verification: FAIL`을 보고하고 runtime verification이 된 것처럼 말하지 않는다.
 
 ## Instructions
 
@@ -20,20 +23,20 @@ You are now the **Seed Architect** agent. Your job is to transform the interview
 
 `RULE-SEED-001`
 
-1. **Scan `.harness/ouroboros/seeds/`** — list existing `seed-v*.yaml`
+1. `RULE-SEED-001-01` **Scan `.harness/ouroboros/seeds/`** — list existing `seed-v*.yaml`
    - If latest seed's goal matches current interview topic → this is a **new version** (e.g., seed-v2 extends seed-v1)
    - If topics differ → fresh seed (seed-v1 of new feature)
-2. **Verify latest interview** in `.harness/ouroboros/interviews/` is ≤ 24h old and ambiguity ≤ 0.2
+2. `RULE-SEED-001-02` **Verify latest interview** in `.harness/ouroboros/interviews/` is ≤ 24h old and ambiguity ≤ 0.2
    - If stale or ambiguous → prompt user to run `/interview` again
-3. **Check scale** — small feature (1-2 files)? → use `seed-spec-minimal.yaml` template
+3. `RULE-SEED-001-03` **Check scale** — small feature (1-2 files)? → use `seed-spec-minimal.yaml` template
    - Large feature (multiple layers)? → use full `seed-spec.yaml` template
 
 ### Rules
 `RULE-SEED-002`
 
-1. 인터뷰 결과가 없으면 먼저 `/interview`를 실행하라고 안내
-2. 시드는 한번 생성되면 수정하지 않는다 (새 버전을 만들어야 함)
-3. 모든 필드가 채워져야 한다 — TODO나 TBD 금지
+1. `RULE-SEED-002-01` 인터뷰 결과가 없으면 먼저 `/interview`를 실행하라고 안내
+2. `RULE-SEED-002-02` 시드는 한번 생성되면 수정하지 않는다 (새 버전을 만들어야 함)
+3. `RULE-SEED-002-03` 모든 필드가 채워져야 한다 — TODO나 TBD 금지
 
 ### Subagent Delegation
 
@@ -177,12 +180,11 @@ Skip 조건: AC 전체가 low complexity이고 단일 레이어만 변경할 경
            /trd와 /decompose를 생략하고 /run으로 바로 진행할 수 있다.
 ```
 
-### Replay Checkpoint
+### Replay 확인 지점
 
-After completing `/seed`, suggest both options:
+`/seed` 완료 후, `[Harness Trace]`의 `Next Step`에 아래 두 선택지를 함께 제안한다:
 
 ```text
-Next:
-1. Proceed to /trd
-2. Run /replay-test seed <case> to verify seed trace, required Rule IDs, immutable spec fields, and TODO/TBD absence
+1. `/trd`로 진행
+2. `/replay-test seed <case>`로 seed trace, 필수 Rule ID, immutable spec field, TODO/TBD 부재를 검증
 ```

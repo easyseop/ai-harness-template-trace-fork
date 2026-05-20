@@ -38,6 +38,7 @@ AI가 결과를 만들었을 때 팀이 확인하고 싶은 것은 “답이 그
 | Runtime 기록 | 별도 구조 없음 | `.harness/trace` Runtime Trace 구조 추가 |
 | 단계별 검증 | 전체 루프 재실행 중심 | `/replay-test`로 특정 단계만 fixture 검증 |
 | 결과 이력 | 테스트 결과 저장 구조 없음 | `tests/results`에 run/latest/baseline 저장 |
+| Rule 변경 검증 | 수동 확인 필요 | 변경 rule file / Rule ID를 replay에서 명시 검증 |
 
 ## 추가된 핵심 기능
 
@@ -63,15 +64,21 @@ Next Step:
 ```text
 [Spec Evidence]
 1. <file_path>#<rule_id>
-   Rule: "<existing rule sentence or short summary>"
-   Applied because: <why this rule applies now>
+   Rule: "<기존 규칙 문장 또는 짧은 요약>"
+   Applied because: <이 규칙이 현재 작업에 적용되는 이유>
 ```
 
 명시 규칙이 없으면 근거를 꾸며내지 않고 `No explicit spec rule found.`를 출력합니다.
 
 ### 3. Runtime Trace
 
-Trace가 단순한 AI 자기보고에 머물지 않도록, 가능한 경우 실제 선택/로딩된 파일 정보를 `.harness/trace`에 기록합니다.
+Trace가 단순한 AI 자기보고에 머물지 않도록, Runtime Trace는 `selected`, `loaded`, `applied`를 구분해 기록합니다.
+
+| 구분 | 의미 |
+|------|------|
+| `selected` | 하네스 라우터가 단계 기준으로 선택한 파일 |
+| `loaded` | 단계 진행 중 명시적으로 읽었다고 표시한 파일과 sha256 |
+| `applied` | 최종 Spec Evidence에 인용한 Rule ID가 loaded file 안에 실제 존재하는지 검증한 결과 |
 
 대표 항목:
 
@@ -81,10 +88,43 @@ Trace가 단순한 AI 자기보고에 머물지 않도록, 가능한 경우 실�
 - selected_command_files
 - selected_reference_files
 - selected_agent_files
+- selected_rule_ids
+- loaded_files
 - loaded_rule_ids
+- applied_rule_ids
+- trace_confidence
 - rule_source_paths
 - trace_id
 - user_request_summary
+
+단, 이것도 Claude 내부의 실제 Read 호출을 OS 수준으로 감청하는 것은 아닙니다. 대신 파일 해시와 Rule ID 검증으로 “선택 후보 목록”보다 더 신뢰할 수 있는 evidence chain을 남기는 방식입니다.
+
+## Trace를 왜 신뢰할 수 있나
+
+이 하네스는 AI의 생각을 들여다보는 도구가 아닙니다. 대신 외부에서 확인 가능한 증거를 단계별로 남깁니다.
+
+| 단계 | 무엇을 증명하나 | 검증 방법 |
+|------|----------------|-----------|
+| `selected` | 이 workflow step에서 참고해야 할 파일 후보가 무엇인지 | `record-runtime-trace.sh`의 step별 선택 로직과 JSON 기록 |
+| `loaded` | 특정 파일을 읽었다고 표시했고, 그 시점의 파일 내용이 무엇인지 | `mark-loaded-file.sh`가 path, sha256, size, mtime, Rule ID 기록 |
+| `applied` | 최종 Spec Evidence에 인용한 Rule ID가 실제 loaded file 안에 있는지 | `finalize-runtime-trace.py`가 `file_path#RULE-ID` 검증 |
+| behavior | 산출물이 그 규칙을 실제로 지켰는지 | replay assertion, forbidden pattern, gate, evaluate |
+
+그래서 trace는 다음 수준으로 해석합니다.
+
+```text
+selected_only: 참고 후보 기록. 낮은 신뢰도.
+loaded_files_recorded: 파일 해시와 Rule ID가 기록됨. 중간 신뢰도.
+applied_evidence_verified: 인용한 Rule ID가 loaded file 안에 실제 존재함. 중간~높은 신뢰도.
+applied_evidence_verified + gate/replay/evaluate PASS: 근거와 산출물 검증이 연결됨. 가장 신뢰 가능.
+```
+
+주의할 점도 있습니다.
+
+- `loaded_files`는 Claude 내부 Read 호출을 자동 감청한 기록은 아닙니다.
+- Rule ID가 존재한다는 것은 “규칙을 정확히 이해했다”는 뜻은 아닙니다.
+- 최종 신뢰도는 Trace Evidence와 산출물 검증을 함께 봐야 올라갑니다.
+- `trace-policy.json`은 selected에 없는 파일을 억지로 요구하지 않고, selected된 핵심 파일의 loaded 누락만 강하게 잡습니다.
 
 ### 4. Replay Test
 
@@ -104,6 +144,14 @@ Trace가 단순한 AI 자기보고에 머물지 않도록, 가능한 경우 실�
 - 기존 규칙을 깨지 않았는가
 - 금지 패턴이 산출물에 없는가
 - 명시 규칙이 없을 때 `No explicit spec rule found`를 출력하는가
+
+규칙 파일을 바꾼 뒤에는 변경 파일을 명시해 replay가 새 Rule ID를 놓치지 않는지 확인할 수 있습니다.
+
+```bash
+python3 tests/replay/replay_runner.py tests/cases/<case-file>.yaml \
+  --changed-rule-file ARCHITECTURE_INVARIANTS.md \
+  --changed-rule-id RULE-APP-SQLSELECT-001
+```
 
 ## 빈 프로젝트에서 사용하는 방법
 
@@ -187,6 +235,8 @@ Replay에는 신뢰도 수준이 있습니다.
 | `tests/replay/replay_runner.py` | Replay Test 실행/검증 runner |
 | `trace/README.md` | Runtime Trace 구조 설명 |
 | `trace/record-runtime-trace.sh` | Runtime Trace 기록 스크립트 |
+| `trace/mark-loaded-file.sh` | 명시적으로 읽은 파일의 sha256과 Rule ID 기록 |
+| `trace/finalize-runtime-trace.py` | Spec Evidence의 `file_path#RULE-ID` 검증 |
 
 ## 기억할 점
 

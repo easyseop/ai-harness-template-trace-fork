@@ -9,8 +9,11 @@ description: Evolve the system when /evaluate fails. Runs Wonder → Reflect →
 ## Trace Metadata
 
 - Rule ID: `RULE-EVOLVE-001`
-- Runtime Trace: run `.harness/trace/record-runtime-trace.sh --step evolve --request-type system-evolution --summary "<user request summary>"` before checking prerequisites when the script exists.
-- AI-facing Trace: use `.harness/trace/latest-runtime-trace.json` when available; otherwise list only files actually read.
+- Runtime Trace 시작: 스크립트가 있으면 prerequisites 확인 전에 `.harness/trace/record-runtime-trace.sh --step evolve --request-type system-evolution --summary "<user request summary>"`를 실행한다.
+- Loaded File Trace 기록: command/reference/agent 파일을 읽은 뒤, 스크립트가 있으면 `.harness/trace/mark-loaded-file.sh --path "<file>"`로 loaded 기록을 남긴다.
+- AI-facing Trace 출력: `.harness/trace/latest-runtime-trace-final.json`을 우선 참고하고, 없으면 `.harness/trace/latest-runtime-trace.json`을 참고한다. selected, loaded, applied evidence를 구분해서 설명한다.
+- Spec Evidence 출력: 명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 최종 응답에 `[Spec Evidence]`를 포함한다. 근거가 없으면 `[Spec Evidence]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않는다.
+- Final Trace Gate 검증: Spec Evidence를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 `python3 .harness/trace/finalize-runtime-trace.py --evidence-file .harness/trace/current-spec-evidence.md --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. Spec Evidence가 없으면 `python3 .harness/trace/finalize-runtime-trace.py --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. 실패하면 `Trace Verification: FAIL`을 보고하고 runtime verification이 된 것처럼 말하지 않는다.
 
 ## Instructions
 
@@ -19,8 +22,8 @@ You are the **Evolver**. Your job is to analyze evaluation failures and evolve t
 ### Prerequisites
 `RULE-EVOLVE-001`
 
-- Evaluation results must exist in `.harness/ouroboros/evaluations/`
-- If no evaluation, prompt to run `/evaluate` first
+- `RULE-EVOLVE-001-01` Evaluation results must exist in `.harness/ouroboros/evaluations/`
+- `RULE-EVOLVE-001-02` If no evaluation, prompt to run `/evaluate` first
 
 ### Subagent Delegation (Fan-out)
 
@@ -132,12 +135,11 @@ WARNING: {pattern} detected.
   Run /interview to restart from fresh perspective.
 ```
 
-### Replay Checkpoint
+### Replay 확인 지점
 
-After completing `/evolve`, suggest both options:
+`/evolve` 완료 후, `[Harness Trace]`의 `Next Step`에 아래 두 선택지를 함께 제안한다:
 
 ```text
-Next:
-1. Proceed to /run with the evolved seed, or stop if converged
-2. Run /replay-test evolve <case> to verify evolution trace, expected rule/spec updates, convergence status, and forbidden oscillation patterns
+1. evolved seed로 `/run` 진행, 또는 수렴 상태면 중단
+2. `/replay-test evolve <case>`로 evolution trace, expected rule/spec update, convergence status, 금지 oscillation pattern을 검증
 ```
