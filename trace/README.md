@@ -1,4 +1,4 @@
-# Harness Trace
+# 하네스 Trace
 
 Harness Trace는 기존 하네스의 workflow, command 의미, agent 역할, gate 기준을 바꾸지 않고 관측 가능성만 추가하기 위한 구조입니다.
 
@@ -15,12 +15,12 @@ Claude가 각 단계에서 어떤 파일과 어떤 Rule ID를 근거로 판단�
 
 | 구분 | 의미 |
 |------|------|
-| AI-facing Trace | Claude가 사용자에게 보여주는 설명용 trace입니다. `[Harness Trace]` 형태로 출력됩니다. |
+| AI-facing Trace | Claude가 사용자에게 보여주는 설명용 trace입니다. `[하네스 추적]` 형태로 출력됩니다. |
 | Runtime Trace | `.harness/trace` 아래에 저장되는 실행 로그입니다. selected, loaded, applied 증거를 파일로 남깁니다. |
 
 AI-facing Trace는 가능한 경우 `.harness/trace/latest-runtime-trace-final.json`을 우선 참고해야 합니다. final trace가 없으면 `.harness/trace/latest-runtime-trace.json`을 참고합니다.
 
-Runtime Trace가 없을 때 Claude는 임의로 Rule ID나 evidence를 꾸며내면 안 됩니다. 명시적으로 적용한 `file_path#RULE-ID` 근거가 없으면 `[Spec Evidence]` 블록을 출력하지 않습니다.
+Runtime Trace가 없을 때 Claude는 임의로 Rule ID나 evidence를 꾸며내면 안 됩니다. 명시적으로 적용한 `file_path#RULE-ID` 근거가 없으면 `[명세 근거]` 블록을 출력하지 않습니다.
 
 ## Trace 기본 구조
 
@@ -111,7 +111,7 @@ loaded 강제 정책 = trace-policy.json
 
 | 파일 | 지시 내용 |
 |------|-----------|
-| `CLAUDE.md` | 이 템플릿 레포 자체에서 `[Harness Trace]`, `[Spec Evidence]` 출력 의무를 정의합니다. |
+| `CLAUDE.md` | 이 템플릿 레포 자체에서 `[하네스 추적]`, `[명세 근거]` 출력 원칙을 정의합니다. |
 | `templates/CLAUDE.md.hbs` | `init.sh`로 새 프로젝트에 설치될 `CLAUDE.md` 템플릿입니다. 실제 사용 프로젝트에는 이 내용이 들어갑니다. |
 | `commands/interview.md` | `/interview` 단계에서 Runtime Trace 시작, loaded 기록, final trace gate 실행을 지시합니다. |
 | `commands/seed.md` | `/seed` 단계에서 Runtime Trace 시작, loaded 기록, final trace gate 실행을 지시합니다. |
@@ -144,21 +144,22 @@ loaded 강제 정책 = trace-policy.json
 .harness/trace/current-spec-evidence.md
 ```
 
-4. 명시 근거가 있을 때만 최종 사용자 응답에 Spec Evidence 출력:
+4. 명시 근거가 있을 때만 최종 사용자 응답에 명세 근거 출력:
 
 ```text
-[Spec Evidence]
+[명세 근거]
 1. <file_path>#<rule_id>
-   Rule: "<기존 규칙 문장 또는 짧은 요약>"
-   Applied because: <이 규칙이 현재 작업에 적용되는 이유>
+   규칙: "<기존 규칙 문장 또는 짧은 요약>"
+   적용 이유: <이 규칙이 현재 작업에 적용되는 이유>
 ```
 
-명시적으로 적용한 `file_path#RULE-ID` 근거가 없으면 `[Spec Evidence]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않습니다.
+명시적으로 적용한 `file_path#RULE-ID` 근거가 없으면 `[명세 근거]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않습니다.
 
 5. 최종 trace gate 실행:
 
 ```bash
 python3 .harness/trace/finalize-runtime-trace.py \
+  --expect-step <step> \
   --evidence-file .harness/trace/current-spec-evidence.md \
   --require-loaded-selected command \
   --policy .harness/trace/trace-policy.json \
@@ -169,12 +170,15 @@ Spec Evidence가 없으면 `--evidence-file` 없이 실행합니다.
 
 ```bash
 python3 .harness/trace/finalize-runtime-trace.py \
+  --expect-step <step> \
   --require-loaded-selected command \
   --policy .harness/trace/trace-policy.json \
   --require-policy
 ```
 
-final trace gate가 실패하면 Claude는 `Trace Verification: FAIL`을 출력해야 하며, 해당 trace를 runtime-verified라고 말하면 안 됩니다.
+final trace gate는 `Trace 검증: PASS`, `Trace 검증: WARNING`, `Trace 검증: FAIL`과 이유를 출력합니다. `FAIL`이면 해당 trace를 runtime-verified라고 말하면 안 됩니다. `WARNING`이면 산출물은 진행할 수 있지만, 어떤 trace 증거가 약한지 함께 설명해야 합니다.
+
+주의할 점이 있습니다. md 지시만으로 trace 누락을 완전히 막을 수는 없습니다. 현재 구조는 누락이 생겼을 때 finalizer가 `FAIL` 또는 `WARNING`과 이유를 드러내게 만드는 방식입니다. trace 시작, loaded 기록, finalizer 실행 자체를 절대 빠뜨리지 않게 하려면 Claude Code hook, command wrapper, 또는 API 기반 runner처럼 명령 실행을 감싸는 별도 실행기가 필요합니다.
 
 ## 단계별 Runtime Trace 시작 명령
 
@@ -196,7 +200,7 @@ Trace는 다음 네 단계를 구분합니다.
 |------|-------------|------|--------|
 | `selected` | `record-runtime-trace.sh` | 하네스가 step 기준으로 참고 후보 파일을 고릅니다. | 높음. selector 기반이라 재현 가능합니다. |
 | `loaded` | Claude가 호출한 `mark-loaded-file.sh` | Claude가 읽었다고 보고한 파일의 해시와 Rule ID를 남깁니다. | 중간. 파일 증거는 남지만 OS-level Read hook은 아닙니다. |
-| `evidence` | Claude의 `[Spec Evidence]` 출력 | 최종 판단 근거를 `file_path#RULE-ID` 형태로 설명합니다. | 중간. Claude가 작성합니다. |
+| `evidence` | Claude의 `[명세 근거]` 출력 | 최종 판단 근거를 `file_path#RULE-ID` 형태로 설명합니다. | 중간. Claude가 작성합니다. |
 | `applied` | `finalize-runtime-trace.py` | evidence가 실제 loaded 파일과 Rule ID에 의해 검증되는지 확인합니다. | 높음. 스크립트가 검증합니다. |
 
 쉽게 말하면:
@@ -261,6 +265,8 @@ selector의 구현 위치는 `trace/record-runtime-trace.sh`입니다. 만약 `c
 | selected에 없는데 loaded에 있음 | 예상 밖 추가 참고. selector 개선 후보일 수 있음 |
 | selected에 없고 loaded에도 없음 | 관련 없음 |
 
+중요한 한계가 있습니다. loaded가 없다는 것은 “파일을 읽지 않았다”의 확정 증거가 아닙니다. 현재 구조에서는 “읽지 않았거나, 읽었지만 `mark-loaded-file.sh` 기록이 빠졌거나, 경로가 달라 매칭되지 않았다”까지만 알 수 있습니다.
+
 `loaded_not_selected`는 항상 나쁜 신호가 아닙니다. Claude가 작업 중 필요한 추가 문서를 찾아 읽었다는 뜻일 수 있습니다. 같은 파일이 반복적으로 중요하게 등장한다면 selector나 `trace-policy.json`에 반영할지 검토합니다.
 
 ## LLM과 Trace 동작 구조
@@ -271,7 +277,7 @@ selector의 구현 위치는 `trace/record-runtime-trace.sh`입니다. 만약 `c
 
 | 구분 | 역할 | 저장/출력 위치 |
 |------|------|----------------|
-| AI-facing Trace | 사용자가 보는 설명입니다. Claude가 현재 단계, 참고 파일, 적용 Rule ID, 다음 단계를 `[Harness Trace]`로 보여줍니다. | 대화 화면 |
+| AI-facing Trace | 사용자가 보는 설명입니다. Claude가 현재 단계, 참고 파일, 적용 Rule ID, 다음 단계를 `[하네스 추적]`으로 보여줍니다. | 대화 화면 |
 | Runtime Trace | 나중에 검증할 수 있는 실행 기록입니다. selected, loaded, applied evidence를 JSON/JSONL로 남깁니다. | `.harness/trace/**` |
 
 두 trace의 관계는 다음과 같습니다.
@@ -396,40 +402,42 @@ loaded_by: mark-loaded-file
 
 다만 이것은 여전히 OS-level Read hook은 아닙니다. 즉, Claude 내부의 파일 읽기 동작을 자동 감청한 것은 아닙니다. Claude가 command md 지시에 따라 `mark-loaded-file.sh`를 호출해 남기는 외부 증거입니다.
 
-### 5단계. Claude가 작업 결과와 Spec Evidence 작성
+### 5단계. Claude가 작업 결과와 명세 근거 작성
 
 Claude는 command md의 업무 규칙에 따라 실제 판단이나 산출물을 만듭니다.
 
-그 뒤 판단 근거를 `[Spec Evidence]`로 작성해야 합니다.
+그 뒤 판단 근거가 있으면 `[명세 근거]`로 작성해야 합니다.
 
 ```text
-[Spec Evidence]
+[명세 근거]
 1. commands/run.md#RULE-RUN-001
-   Rule: "<기존 규칙 문장 또는 짧은 요약>"
-   Applied because: <이 규칙이 현재 작업에 적용되는 이유>
+   규칙: "<기존 규칙 문장 또는 짧은 요약>"
+   적용 이유: <이 규칙이 현재 작업에 적용되는 이유>
 ```
 
-Spec Evidence는 AI-facing Trace의 일부입니다. 즉, 사용자가 화면에서 볼 수 있는 설명입니다.
+명세 근거는 AI-facing Trace의 일부입니다. 즉, 사용자가 화면에서 볼 수 있는 설명입니다.
 
 하지만 여기서 끝나면 Claude의 자기보고에 가깝습니다. 그래서 다음 단계에서 Runtime Trace finalizer가 이 evidence를 검증합니다.
 
-### 6단계. Spec Evidence가 있으면 Runtime Trace로 검증
+### 6단계. 명세 근거가 있으면 Runtime Trace로 검증
 
-Claude는 Spec Evidence를 출력한 경우에만 해당 블록을 파일로 저장하고 finalizer를 실행합니다.
+Claude는 명세 근거를 출력한 경우에만 해당 블록을 파일로 저장하고 finalizer를 실행합니다.
 
 ```bash
 python3 .harness/trace/finalize-runtime-trace.py \
+  --expect-step <step> \
   --evidence-file .harness/trace/current-spec-evidence.md \
   --require-loaded-selected command \
   --policy .harness/trace/trace-policy.json \
   --require-policy
 ```
 
-Spec Evidence가 없으면 `--evidence-file` 없이 finalizer를 실행합니다.
+명세 근거가 없으면 `--evidence-file` 없이 finalizer를 실행합니다.
 
 finalizer는 다음을 확인합니다.
 
-- Spec Evidence가 존재하는가
+- Runtime Trace의 workflow_step이 현재 command step과 일치하는가
+- 명세 근거가 존재하는가
 - `file_path#RULE-ID` 형식의 evidence가 있는가
 - evidence에 적힌 파일이 실제로 존재하는가
 - evidence에 적힌 Rule ID가 그 파일 안에 실제로 있는가
@@ -437,11 +445,29 @@ finalizer는 다음을 확인합니다.
 - command 파일이 loaded로 기록되어 있는가
 - `trace-policy.json` 기준으로 required loaded 파일이 누락되지 않았는가
 
-검증에 성공하면 Runtime Trace final 파일이 생성됩니다.
+finalizer는 결과를 세 단계로 나눕니다.
+
+| 상태 | 의미 |
+|------|------|
+| `PASS` | required loaded와 명세 근거 검증이 통과했습니다. |
+| `WARNING` | 필수 조건은 통과했지만 optional selected 파일이 loaded로 남지 않았거나, selected 밖 loaded가 있습니다. 실제 미참고인지 기록 누락인지는 구분하지 않습니다. |
+| `FAIL` | required loaded가 누락됐거나, 명세 근거의 파일/Rule ID/loaded 기록이 맞지 않습니다. |
+
+검증 결과는 이유와 함께 Runtime Trace final 파일에 저장됩니다.
 
 ```text
 .harness/trace/latest-runtime-trace-final.json
 .harness/trace/sessions/<trace_id>/final-runtime-trace.json
+```
+
+대표 필드는 다음과 같습니다.
+
+```text
+trace_status: PASS | WARNING | FAIL
+trace_reasons.pass: 통과 이유
+trace_reasons.warning: 경고 이유
+trace_reasons.failure: 실패 이유
+optional_selected_not_loaded: 필수는 아니지만 loaded 기록이 없는 selected 파일
 ```
 
 이때 `trace_confidence`는 상황에 따라 다음처럼 결정됩니다.
@@ -454,46 +480,47 @@ loaded_files_recorded
   loaded 파일 기록은 있으나 applied evidence 검증은 아직 약함
 
 applied_evidence_verified
-  Spec Evidence의 file_path#RULE-ID가 loaded 파일 안에서 검증됨
+  명세 근거의 file_path#RULE-ID가 loaded 파일 안에서 검증됨
 
 applied_evidence_mismatch
-  Spec Evidence가 실제 파일, Rule ID, loaded 기록과 맞지 않음
+  명세 근거가 실제 파일, Rule ID, loaded 기록과 맞지 않음
 ```
 
 ### 7단계. AI-facing Trace 출력
 
-마지막으로 Claude는 사용자에게 `[Harness Trace]`와 `[Spec Evidence]`를 출력합니다.
+마지막으로 Claude는 사용자에게 `[하네스 추적]`과, 근거가 있을 때만 `[명세 근거]`를 출력합니다.
 
 이때 AI-facing Trace는 가능한 경우 Runtime Trace final 결과를 기준으로 작성해야 합니다.
 
 ```text
-[Harness Trace]
-Current Step:
-Request Type:
-Applied Command Files:
-Applied Reference Files:
-Applied Agent Files:
-Key Rules Applied:
-Trace Confidence:
-Trace Verification:
-Next Step:
+[하네스 추적]
+현재 단계:
+요청 유형:
+적용한 command 파일:
+적용한 reference 파일:
+적용한 agent 파일:
+적용한 핵심 Rule ID:
+산출물:
+Trace 신뢰도:
+Trace 검증:
+다음 단계:
 ```
 
 상호관계는 이렇게 정리할 수 있습니다.
 
 ```text
 Runtime Trace가 성공적으로 finalized 됨
-  -> AI-facing Trace에서 Trace Verification: PASS 또는 verified 상태를 말할 수 있음
+  -> AI-facing Trace에서 Trace 검증: PASS 또는 verified 상태를 말할 수 있음
 
 Runtime Trace가 selected_only 수준임
   -> AI-facing Trace에서 후보 파일 기준이라고 밝혀야 함
 
 loaded 누락 또는 evidence mismatch 발생
-  -> AI-facing Trace에서 Trace Verification: FAIL을 말해야 함
+  -> AI-facing Trace에서 Trace 검증: FAIL을 말해야 함
   -> runtime-verified라고 말하면 안 됨
 
 명시 근거가 없음
-  -> Spec Evidence 블록을 출력하지 않음
+  -> 명세 근거 블록을 출력하지 않음
   -> No explicit spec rule found. 문구도 강제하지 않음
 ```
 
@@ -546,11 +573,13 @@ applied_evidence_verified + gate/replay/evaluate PASS
 
 아래 상태가 보이면 trace를 그대로 믿으면 안 됩니다.
 
-- `selected_not_loaded`가 비어 있지 않음
+- `trace_status`가 `FAIL`
 - `trace_confidence`가 `applied_evidence_mismatch`
 - Spec Evidence가 인용한 Rule ID가 실제 파일에 없음
 - Spec Evidence가 인용한 파일이 loaded 기록에 없음
 - 새 Rule ID를 추가했는데 replay case의 `expected_trace`가 갱신되지 않음
+
+`trace_status`가 `WARNING`이면 무조건 실패는 아니지만, `trace_reasons.warning`을 읽고 “실제 미참고인지, loaded 기록 누락인지, selector 보정 후보인지”를 확인해야 합니다.
 
 ## loaded의 한계
 
@@ -602,6 +631,7 @@ Claude가 파일을 읽었다고 판단
 
 ```bash
 python3 .harness/trace/finalize-runtime-trace.py \
+  --expect-step run \
   --evidence-file .harness/trace/current-spec-evidence.md \
   --require-loaded-selected command \
   --policy .harness/trace/trace-policy.json \
@@ -689,35 +719,36 @@ RULE-EVAL-PERSONA-001
 - 하위 ID는 구체적인 문장, 체크리스트 항목, 판단 기준을 가리킵니다.
 - 기존 문장의 의미는 바꾸지 않습니다.
 - `RULE-...-001.1`처럼 점을 쓰지 않고 `RULE-...-001-01`처럼 하이픈을 씁니다. 현재 trace 정규식이 이 형태를 안정적으로 인식하기 때문입니다.
-- Spec Evidence에는 가능한 경우 부모 ID보다 하위 ID를 우선 인용합니다.
+- 명세 근거에는 가능한 경우 부모 ID보다 하위 ID를 우선 인용합니다.
 
 ## 사용자 출력 템플릿
 
-각 주요 단계에서 Claude는 아래 형식의 Harness Trace를 출력해야 합니다.
+각 주요 단계에서 Claude는 아래 형식의 하네스 추적을 출력해야 합니다.
 
 ```text
-[Harness Trace]
-Current Step:
-Request Type:
-Applied Command Files:
-Applied Reference Files:
-Applied Agent Files:
-Key Rules Applied:
-Trace Confidence:
-Trace Verification:
-Next Step:
+[하네스 추적]
+현재 단계:
+요청 유형:
+적용한 command 파일:
+적용한 reference 파일:
+적용한 agent 파일:
+적용한 핵심 Rule ID:
+산출물:
+Trace 신뢰도:
+Trace 검증:
+다음 단계:
 ```
 
-판단이나 작업 근거가 있는 경우에는 Spec Evidence를 출력해야 합니다.
+판단이나 작업 근거가 있는 경우에는 명세 근거를 출력해야 합니다.
 
 ```text
-[Spec Evidence]
+[명세 근거]
 1. <file_path>#<rule_id>
-   Rule: "<기존 규칙 문장 또는 짧은 요약>"
-   Applied because: <이 규칙이 현재 작업에 적용되는 이유>
+   규칙: "<기존 규칙 문장 또는 짧은 요약>"
+   적용 이유: <이 규칙이 현재 작업에 적용되는 이유>
 ```
 
-명시적으로 적용할 규칙을 찾지 못한 경우에는 근거를 꾸며내지 말고 `[Spec Evidence]` 블록을 생략합니다.
+명시적으로 적용할 규칙을 찾지 못한 경우에는 근거를 꾸며내지 말고 `[명세 근거]` 블록을 생략합니다.
 
 ## Replay와의 관계
 

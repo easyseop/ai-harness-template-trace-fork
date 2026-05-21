@@ -13,10 +13,11 @@ description: Generate layer-aware technical design document from seed spec. USE 
 
 - Rule ID: `RULE-TRD-001`
 - Runtime Trace 시작: 스크립트가 있으면 Phase 1 전에 `.harness/trace/record-runtime-trace.sh --step trd --request-type technical-design --summary "<user request summary>"`를 실행한다.
-- Loaded File Trace 기록: command/reference/agent 파일을 읽은 뒤, 스크립트가 있으면 `.harness/trace/mark-loaded-file.sh --path "<file>"`로 loaded 기록을 남긴다.
+- Loaded File Trace 기록: command/reference/agent 파일을 읽은 뒤, 스크립트가 있으면 `.harness/trace/mark-loaded-file.sh --path "<file>"`로 loaded 기록을 남긴다. 특히 현재 command 파일 자체를 먼저 기록한다. 설치 프로젝트는 `.claude/commands/trd.md`, 템플릿 레포는 `commands/trd.md`를 사용한다.
 - AI-facing Trace 출력: `.harness/trace/latest-runtime-trace-final.json`을 우선 참고하고, 없으면 `.harness/trace/latest-runtime-trace.json`을 참고한다. selected, loaded, applied evidence를 구분해서 설명한다.
-- Spec Evidence 출력: 명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 최종 응답에 `[Spec Evidence]`를 포함한다. 근거가 없으면 `[Spec Evidence]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않는다.
-- Final Trace Gate 검증: Spec Evidence를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 `python3 .harness/trace/finalize-runtime-trace.py --evidence-file .harness/trace/current-spec-evidence.md --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. Spec Evidence가 없으면 `python3 .harness/trace/finalize-runtime-trace.py --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. 실패하면 `Trace Verification: FAIL`을 보고하고 runtime verification이 된 것처럼 말하지 않는다.
+- 명세 근거 출력: 명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 최종 응답에 `[명세 근거]`를 포함한다. 근거가 없으면 `[명세 근거]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않는다.
+- Final Trace Gate 검증: 명세 근거를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 `python3 .harness/trace/finalize-runtime-trace.py --expect-step trd --evidence-file .harness/trace/current-spec-evidence.md --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. 명세 근거가 없으면 `python3 .harness/trace/finalize-runtime-trace.py --expect-step trd --require-loaded-selected command --policy .harness/trace/trace-policy.json --require-policy`를 실행한다. 실패하면 `Trace 검증: FAIL`을 보고하고 runtime verification이 된 것처럼 말하지 않는다.
+- Trace 누락 방지: Runtime Trace 시작, 현재 command 파일 loaded 기록, Final Trace Gate는 이 command의 preflight/postflight gate다. 누락되면 `Trace 검증: FAIL` 또는 `WARNING`과 이유를 보고하고 runtime-verified라고 말하지 않는다.
 
 ## 워크플로우
 
@@ -149,7 +150,7 @@ TRD 작성 후, 필요한 모듈들에 대한 테스트를 설계합니다:
 
 ### Replay 확인 지점
 
-`/trd` 완료 후, `[Harness Trace]`의 `Next Step`에 아래 두 선택지를 함께 제안한다:
+`/trd` 완료 후, `[하네스 추적]`의 `다음 단계`에 아래 두 선택지를 함께 제안한다:
 
 ```text
 1. `/decompose`로 진행

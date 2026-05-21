@@ -149,13 +149,13 @@ AI-facing Trace
 5. 읽은 파일마다 mark-loaded-file.sh 실행
    파일 경로, sha256, Rule ID를 loaded로 기록
         ↓
-6. Claude가 [Spec Evidence] 작성
+6. Claude가 [명세 근거] 작성
    file_path#RULE-ID 형태로 판단 근거를 제시
         ↓
 7. finalize-runtime-trace.py 실행
    evidence가 실제 loaded 파일과 Rule ID에 의해 뒷받침되는지 확인
         ↓
-8. Claude가 [Harness Trace]를 사용자에게 출력
+8. Claude가 [하네스 추적]을 사용자에게 출력
 ```
 
 ### selected, loaded, evidence, applied
@@ -166,7 +166,7 @@ Trace는 네 단계를 구분합니다.
 |------|-------------|------|------|-----------|
 | `selected` | 이 단계에서 참고 후보가 되는 파일 | workflow step, request summary | selected command/reference/agent files | `record-runtime-trace.sh`에 정의된 단계별 선택 규칙 |
 | `loaded` | Claude가 읽었다고 기록한 파일 | `--path <file>` | 파일 경로, sha256, Rule ID | Claude가 파일을 읽은 뒤 `mark-loaded-file.sh` 실행 |
-| `evidence` | Claude가 최종 근거로 제시한 규칙 | `[Spec Evidence]` 문장 | `file_path#RULE-ID` | Claude가 현재 판단에 적용됐다고 설명 |
+| `evidence` | Claude가 최종 근거로 제시한 규칙 | `[명세 근거]` 문장 | `file_path#RULE-ID` | Claude가 현재 판단에 적용됐다고 설명 |
 | `applied` | evidence가 실제 파일로 검증된 상태 | evidence file, loaded trace | 검증된 Rule ID, 실패 사유 | `finalize-runtime-trace.py`가 파일과 Rule ID 실존 여부 확인 |
 
 이 중 `selected`와 `applied`는 스크립트가 판단하므로 비교적 강합니다. `loaded`와 `evidence`는 Claude가 남기는 기록을 바탕으로 하므로, 해시와 Rule ID 검증으로 보강하지만 완전한 OS-level read hook은 아닙니다.
@@ -196,6 +196,8 @@ Trace는 네 단계를 구분합니다.
 | selected에 없는데 loaded에 있음 | 예상 밖 추가 참고. selector 개선 후보일 수 있음 |
 | selected에 없고 loaded에도 없음 | 관련 없음 |
 
+중요한 한계가 있습니다. loaded가 없다는 것은 “파일을 읽지 않았다”의 확정 증거가 아닙니다. 현재 구조에서는 “읽지 않았거나, 읽었지만 `mark-loaded-file.sh` 기록이 빠졌거나, 경로가 달라 매칭되지 않았다”까지만 알 수 있습니다.
+
 ---
 
 ## Trace 산출물
@@ -213,28 +215,29 @@ Trace 실행 결과는 주로 `.harness/trace` 아래에 저장됩니다.
 사용자 화면에는 아래 형식이 출력됩니다.
 
 ```text
-[Harness Trace]
-Current Step:
-Request Type:
-Applied Command Files:
-Applied Reference Files:
-Applied Agent Files:
-Key Rules Applied:
-Trace Confidence:
-Trace Verification:
-Next Step:
+[하네스 추적]
+현재 단계:
+요청 유형:
+적용한 command 파일:
+적용한 reference 파일:
+적용한 agent 파일:
+적용한 핵심 Rule ID:
+산출물:
+Trace 신뢰도:
+Trace 검증:
+다음 단계:
 ```
 
 판단 근거가 있을 때는 아래 형식도 함께 출력합니다.
 
 ```text
-[Spec Evidence]
+[명세 근거]
 1. <file_path>#<rule_id>
-   Rule: "<기존 규칙 문장 또는 짧은 요약>"
-   Applied because: <이 규칙이 현재 작업에 적용되는 이유>
+   규칙: "<기존 규칙 문장 또는 짧은 요약>"
+   적용 이유: <이 규칙이 현재 작업에 적용되는 이유>
 ```
 
-명시적으로 적용한 `file_path#RULE-ID` 근거가 없으면 `[Spec Evidence]` 블록을 출력하지 않습니다. 이 경우 `No explicit spec rule found.` 문구도 강제로 출력하지 않습니다.
+명시적으로 적용한 `file_path#RULE-ID` 근거가 없으면 `[명세 근거]` 블록을 출력하지 않습니다. 이 경우 `No explicit spec rule found.` 문구도 강제로 출력하지 않습니다.
 
 ---
 
@@ -249,18 +252,22 @@ Trace는 단순히 “출력해 주세요”라고만 적어두지 않았습니�
 2. 파일을 읽은 뒤 loaded 기록
    mark-loaded-file.sh --path <file> 실행
 
-3. 명시 근거가 있을 때만 Spec Evidence 출력
-   근거가 없으면 [Spec Evidence] 블록을 생략
+3. 명시 근거가 있을 때만 명세 근거 출력
+   근거가 없으면 [명세 근거] 블록을 생략
 
-4. Spec Evidence가 있을 때만 저장
+4. 명세 근거가 있을 때만 저장
    current-spec-evidence.md 생성
 
 5. 최종 검증
-   Spec Evidence가 있으면 evidence까지 검증하고, 없으면 loaded 누락 여부만 검증
+   명세 근거가 있으면 evidence까지 검증하고, 없으면 loaded 누락 여부만 검증
 
-6. 검증 실패 시
-   Trace Verification: FAIL 출력
+6. 검증 상태 출력
+   Trace 검증: PASS / WARNING / FAIL과 이유 출력
 ```
+
+finalizer의 의미는 “Claude가 진짜 이해했는지 증명”이 아닙니다. 대신 trace 증거가 서로 맞는지 확인합니다. required loaded가 빠지거나 명세 근거가 실제 파일/Rule ID/loaded 기록과 맞지 않으면 `FAIL`, optional selected 파일의 loaded 기록이 없거나 예상 밖 loaded가 있으면 `WARNING`, 필수 증거가 모두 맞으면 `PASS`입니다.
+
+다만 md 지시만으로 trace 누락을 0으로 만들 수는 없습니다. 현재 구조는 command md와 `CLAUDE.md`에 preflight/postflight gate를 강하게 명시하고, finalizer가 누락을 이유와 함께 드러내는 방식입니다. 진짜 강제 실행까지 하려면 Claude Code hook, command wrapper, 또는 API 기반 runner처럼 명령 실행 자체를 감싸는 구조가 추가로 필요합니다.
 
 관련 파일은 다음과 같습니다.
 
@@ -290,7 +297,7 @@ ARCHITECTURE_INVARIANTS.md
 docs/TRD.md
 ```
 
-이 파일들이 selected 되었는데 loaded 기록이 없으면 `finalize-runtime-trace.py`가 실패시키고, Claude는 `Trace Verification: FAIL`을 출력해야 합니다. 반대로 policy에 적혀 있어도 이번 selected 목록에 없는 파일은 억지로 끌어오지 않고 `policy_paths_not_selected`에 보고만 합니다.
+이 파일들이 selected 되었는데 loaded 기록이 없으면 `finalize-runtime-trace.py`가 실패시키고, Claude는 `Trace 검증: FAIL`을 출력해야 합니다. 반대로 policy에 적혀 있어도 이번 selected 목록에 없는 파일은 억지로 끌어오지 않고 `policy_paths_not_selected`에 보고만 합니다.
 
 정직하게 말하면, 이것은 Claude의 내부 사고 과정을 보는 장치가 아닙니다. 대신 “어떤 외부 문서가 선택됐고, 어떤 파일을 읽었다고 기록했으며, 어떤 Rule ID를 evidence로 제시했고, 그 evidence가 실제 파일에 존재하는지”를 확인하는 장치입니다.
 
@@ -430,7 +437,7 @@ tests/results/
 | 파일 | 의미 |
 |------|------|
 | `replay_result.yaml` | PASS/FAIL, assertion 결과, 결과 파일 경로 |
-| `actual_trace.md` | 실제 Harness Trace와 Spec Evidence |
+| `actual_trace.md` | 실제 하네스 추적과 명세 근거 |
 | `actual_output.md` | target step의 실제 산출물 |
 | `diff.md` | 기대값과 실제값의 차이 |
 | `summary.md` | 사람이 읽기 쉬운 요약 |

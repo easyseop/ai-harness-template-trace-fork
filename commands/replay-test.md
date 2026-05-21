@@ -1,11 +1,11 @@
 ---
-description: fixture 기반으로 Ouroboros workflow 한 단계를 replay하고 Harness Trace, Spec Evidence, output 기대값을 검증한다. 테스트 전용 명령이며 실제 개발 산출물을 만들지 않는다.
+description: fixture 기반으로 Ouroboros workflow 한 단계를 replay하고 하네스 추적, 명세 근거, output 기대값을 검증한다. 테스트 전용 명령이며 실제 개발 산출물을 만들지 않는다.
 argument-hint: "<target_step> <case> | YAML block with target_step and case"
 ---
 
 # /replay-test — 단계 Replay Test
 
-> 기존 Harness Trace / Spec Evidence 로직을 수정하지 않고, 특정 workflow 단계만 fixture 기반으로 재실행해 trace와 산출물을 검증한다.
+> 기존 하네스 추적 / 명세 근거 로직을 수정하지 않고, 특정 workflow 단계만 fixture 기반으로 재실행해 trace와 산출물을 검증한다.
 
 ## 범위
 
@@ -25,7 +25,7 @@ Ouroboros slash command는 shell program이 아니라 Markdown 지시문입니�
 금지:
 - production feature artifact를 생성하거나 수정하지 않는다
 - `/interview`, `/seed`, `/trd`, `/decompose`, `/run`, `/evaluate`, `/evolve`를 대체하지 않는다
-- 기존 Harness Trace / Spec Evidence 동작을 바꾸지 않는다
+- 기존 하네스 추적 / 명세 근거 동작을 바꾸지 않는다
 - 별도 `/trace` 명령을 만들지 않는다
 
 허용:
@@ -64,7 +64,7 @@ case: data_pipeline_cdc
 3. `input_fixtures`에 나열된 모든 파일을 읽는다.
 4. fixture를 직전 상태로 보고 요청된 `target_step`만 replay한다.
 5. case가 명시적으로 `mode: e2e`라고 하지 않는 한 전체 Ouroboros workflow를 실행하지 않는다.
-6. 해당 step의 Harness Trace, Spec Evidence, output을 캡처한다.
+6. 해당 step의 하네스 추적, 명세 근거, output을 캡처한다.
 7. assertion을 실행한다.
 
 ```bash
@@ -166,7 +166,7 @@ Replay test는 Runtime Trace를 여러 수준에서 검증할 수 있습니다.
 
 - `must_include_rule_ids`: 기존 trace check와 호환됩니다. Rule ID가 selected, loaded, applied 또는 raw trace text에 있으면 통과합니다.
 - `must_include_loaded_rule_ids`: Rule ID가 `loaded_rule_ids`에 있을 때만 통과합니다.
-- `must_include_applied_rule_ids`: Rule ID가 applied Spec Evidence로 인용됐을 때만 통과합니다.
+- `must_include_applied_rule_ids`: Rule ID가 applied 명세 근거로 인용됐을 때만 통과합니다.
 - `must_include_loaded_files`: 파일이 명시적으로 loaded 처리됐을 때만 통과합니다.
 - `trace_confidence_in`: 허용할 confidence level을 제한합니다. 예: `loaded_files_recorded`, `applied_evidence_verified`
 - `must_verify_spec_evidence: true`: `finalize-runtime-trace.py`가 인용된 `file_path#RULE-ID` evidence를 loaded file 기준으로 검증해야 합니다.
@@ -236,7 +236,7 @@ python3 tests/replay/replay_runner.py tests/cases/<case-file>.yaml \
 - `must_ask_about`
 - `must_not_ask_about`
 - `must_include_rule_ids`
-- 필수 Harness Trace field
+- 필수 하네스 추적 field
 
 ### 멀티 턴 인터뷰 Replay Test
 
@@ -249,24 +249,24 @@ python3 tests/replay/replay_runner.py tests/cases/<case-file>.yaml \
 ## 필수 결과 형식
 
 ```text
-[Replay Test Result]
-Test ID:
-Target Step:
-Case:
-Input Fixtures:
+[Replay Test 결과]
+테스트 ID:
+대상 단계:
+케이스:
+입력 Fixture:
 
-[Harness Trace Check]
+[하네스 추적 확인]
 PASS/FAIL - <rule_id>
 
-[Output Check]
+[산출물 확인]
 PASS/FAIL - <expected item>
 
-[Forbidden Pattern Check]
+[금지 패턴 확인]
 PASS/FAIL - <forbidden item>
 
-Result: PASS or FAIL
+결과: PASS or FAIL
 
-[Replay Artifacts]
+[Replay 산출물]
 replay_result: tests/results/runs/<run_id>/replay_result.yaml
 actual_trace: tests/results/runs/<run_id>/actual_trace.md
 actual_output: tests/results/runs/<run_id>/actual_output.md
@@ -278,6 +278,6 @@ latest_dir: tests/results/latest/<test_id>
 
 ## `/evaluate` Replay 의미
 
-`/evaluate` replay test에서 `Result: PASS`는 evaluator가 기대한 결과를 제대로 감지했다는 뜻입니다.
+`/evaluate` replay test에서 `결과: PASS`는 evaluator가 기대한 결과를 제대로 감지했다는 뜻입니다.
 
 예를 들어 case가 `status: FAIL`을 기대한다면, captured evaluation output이 기대한 이유로 실패했을 때만 Replay Test가 PASS입니다.

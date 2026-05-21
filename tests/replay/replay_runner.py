@@ -392,27 +392,32 @@ def execution_mode(case_data: dict[str, Any], override: str | None) -> str:
 
 def render(case_data: dict[str, Any], results: list[dict[str, str]]) -> str:
     lines = [
-        "[Replay Test Result]",
-        f"Test ID: {case_data.get('test_id', '')}",
-        f"Target Step: {case_data.get('target_step', '')}",
-        f"Case: {case_data.get('case', '')}",
-        "Input Fixtures:",
+        "[Replay Test 결과]",
+        f"테스트 ID: {case_data.get('test_id', '')}",
+        f"대상 단계: {case_data.get('target_step', '')}",
+        f"케이스: {case_data.get('case', '')}",
+        "입력 Fixture:",
     ]
     for fixture in case_data.get("input_fixtures", []) or []:
         lines.append(f"- {fixture}")
     lines.append("")
 
+    section_labels = {
+        "Harness Trace Check": "하네스 추적 확인",
+        "Output Check": "산출물 확인",
+        "Forbidden Pattern Check": "금지 패턴 확인",
+    }
     for section in ["Harness Trace Check", "Output Check", "Forbidden Pattern Check"]:
-        lines.append(f"[{section}]")
+        lines.append(f"[{section_labels[section]}]")
         section_results = [item for item in results if item["section"] == section]
         if not section_results:
-            lines.append("PASS - no expectations")
+            lines.append("PASS - 기대값 없음")
         for item in section_results:
             lines.append(f"{item['status']} - {item['item']}")
         lines.append("")
 
     final = "PASS" if all(item["status"] == "PASS" for item in results) else "FAIL"
-    lines.append(f"Result: {final}")
+    lines.append(f"결과: {final}")
     return "\n".join(lines)
 
 
@@ -432,24 +437,26 @@ def split_assertions(results: list[dict[str, str]], section: str) -> list[dict[s
 
 
 def extract_spec_evidence(output: str) -> str:
-    marker = "[Spec Evidence]"
-    if marker not in output:
-        return "No explicit Spec Evidence block captured in actual output."
-    return marker + output.split(marker, 1)[1].strip()
+    for marker in ["[명세 근거]", "[Spec Evidence]"]:
+        if marker in output:
+            return marker + output.split(marker, 1)[1].strip()
+    return "명시적인 명세 근거 블록이 actual output에 없습니다."
 
 
 def render_trace_markdown(trace: dict[str, Any], output: str) -> str:
-    lines = ["# Actual Trace", ""]
+    lines = ["# 실제 Trace", ""]
     if trace:
         detected_rule_ids = sorted(rule_ids(trace))
         detected_applied_rule_ids = sorted(applied_rule_ids(trace))
         lines.extend([
-            "## Harness Trace",
+            "## 하네스 추적",
             "",
             f"- workflow_step: {trace.get('workflow_step', '')}",
             f"- request_type: {trace.get('request_type', '')}",
             f"- trace_id: {trace.get('trace_id', '')}",
+            f"- trace_status: {trace.get('trace_status', '')}",
             f"- trace_confidence: {trace.get('trace_confidence', '')}",
+            f"- trace_reasons: {trace.get('trace_reasons', {})}",
             f"- selected_command_files: {trace.get('selected_command_files', [])}",
             f"- selected_reference_files: {trace.get('selected_reference_files', [])}",
             f"- selected_agent_files: {trace.get('selected_agent_files', [])}",
@@ -465,10 +472,10 @@ def render_trace_markdown(trace: dict[str, Any], output: str) -> str:
             "",
         ])
     else:
-        lines.extend(["## Harness Trace", "", "No structured Harness Trace captured.", ""])
+        lines.extend(["## 하네스 추적", "", "구조화된 하네스 추적이 없습니다.", ""])
 
     lines.extend([
-        "## Spec Evidence",
+        "## 명세 근거",
         "",
         extract_spec_evidence(output),
         "",
@@ -591,11 +598,11 @@ def render_replay_prompt(case_data: dict[str, Any], case_path: Path, run_dir: Pa
     fixtures = "\n".join(fixture_lines) or "- none"
     command_path = relative(command_file) if command_file else "(missing command file)"
 
-    return f"""# Claude-Mediated Replay Prompt
+    return f"""# Claude-Mediated Replay 프롬프트
 
-You are running a replay test. This is not a production development task.
+Replay Test를 실행합니다. 이 작업은 운영 개발 작업이 아니라 검증 작업입니다.
 
-## Replay Case
+## Replay 케이스
 
 - test_id: {case_data.get('test_id', '')}
 - target_step: {case_data.get('target_step', '')}
@@ -604,22 +611,22 @@ You are running a replay test. This is not a production development task.
 - case_file: {relative(case_path)}
 - target_command_file: {command_path}
 
-## Input Fixtures
+## 입력 Fixture
 
 {fixtures}
 
-## Instructions
+## 지시사항
 
-1. Read the target command file completely.
-2. Read every input fixture completely.
-3. Apply the target command instructions to the fixture state only.
-4. Do not modify production project files.
-5. Write the replayed Harness Trace and Spec Evidence to:
+1. target command 파일을 끝까지 읽습니다.
+2. 모든 input fixture를 끝까지 읽습니다.
+3. target command 지시사항을 fixture 상태에만 적용합니다.
+4. 운영 프로젝트 파일은 수정하지 않습니다.
+5. replay로 생성한 하네스 추적과 명세 근거를 아래 파일에 작성합니다:
    `{relative(run_dir / 'actual_trace.md')}`
-6. Write the replayed target step output to:
+6. replay로 생성한 target step 산출물을 아래 파일에 작성합니다:
    `{relative(run_dir / 'actual_output.md')}`
-7. The output must be newly generated from the command file and fixtures, not copied from `tests/expected`.
-8. After writing both files, run:
+7. 출력은 command 파일과 fixture에서 새로 생성해야 하며, `tests/expected`에서 복사하면 안 됩니다.
+8. 두 파일을 작성한 뒤 아래 명령을 실행합니다:
    `python3 tests/replay/replay_runner.py {relative(case_path)} --execution-mode {mode} --run-dir {relative(run_dir)}`
 """
 
@@ -792,7 +799,7 @@ def main() -> int:
 
     if args.prepare_replay:
         prepared = prepare_replay(case_data, case_path, mode, args.run_dir)
-        print("[Replay Prepared]")
+        print("[Replay 준비 완료]")
         for key, value in prepared.items():
             print(f"{key}: {value}")
         return 0
@@ -867,7 +874,7 @@ def main() -> int:
     )
 
     report = render(case_data, results)
-    lines = [report, "", "[Replay Artifacts]"]
+    lines = [report, "", "[Replay 산출물]"]
     for key, path in artifacts.items():
         lines.append(f"{key}: {path}")
     print("\n".join(lines))

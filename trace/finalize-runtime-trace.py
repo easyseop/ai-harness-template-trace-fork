@@ -211,9 +211,18 @@ def confidence(loaded: list[dict[str, Any]], refs: list[dict[str, Any]]) -> str:
     return "selected_only"
 
 
+def print_reasons(title: str, reasons: list[str], stream: Any = sys.stdout) -> None:
+    if not reasons:
+        return
+    print(title, file=stream)
+    for reason in reasons:
+        print(f"- {reason}", file=stream)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--trace-id")
+    parser.add_argument("--expect-step", help="Fail if the runtime trace workflow_step is not this step.")
     parser.add_argument("--evidence-file", help="File containing the final Spec Evidence block")
     parser.add_argument("--allow-missing-evidence", action="store_true")
     parser.add_argument(
@@ -240,6 +249,8 @@ def main() -> int:
         raise SystemExit("Unable to resolve trace_id.")
 
     record = selected_record(trace_id)
+    workflow_step = str(record.get("workflow_step", "")).strip().lstrip("/")
+    expected_step = str(args.expect_step or "").strip().lstrip("/")
     session_dir = TRACE_DIR / "sessions" / trace_id
     loaded = load_jsonl(session_dir / "loaded-files.jsonl")
     loaded_paths = {str(item.get("path", "")) for item in loaded if item.get("path")}
@@ -285,13 +296,86 @@ def main() -> int:
     evidence_present = bool(refs) or no_explicit_spec_rule_found
     evidence_required_satisfied = evidence_present or not args.require_evidence
     required_loaded_files_satisfied = not missing_required_loaded_files
+    optional_selected_not_loaded = sorted((selected - required_loaded_files) - loaded_paths)
+    loaded_not_selected = sorted(loaded_paths - selected)
+
+    failures: list[str] = []
+    warnings: list[str] = []
+    pass_reasons: list[str] = []
+
+    if expected_step and workflow_step != expected_step:
+        failures.append(
+            f"workflow_step 불일치: expected={expected_step}, actual={workflow_step or '(empty)'} "
+            "(현재 command의 Runtime Trace가 아니라 이전 trace를 검증했을 수 있음)"
+        )
+
+    if args.require_evidence and not evidence_present:
+        failures.append("명세 근거가 필요한 모드인데 evidence가 없습니다.")
+    if refs:
+        unverified_refs = [item for item in refs if not bool(item.get("verified"))]
+        for item in unverified_refs:
+            reasons = []
+            if not item.get("path_exists"):
+                reasons.append("파일 없음")
+            if not item.get("rule_exists_in_path"):
+                reasons.append("Rule ID가 파일 안에 없음")
+            if not item.get("path_marked_loaded"):
+                reasons.append("loaded 기록 없음")
+            failures.append(
+                f"명세 근거 검증 실패: {item.get('path')}#{item.get('rule_id')} "
+                f"({', '.join(reasons) or '원인 미상'})"
+            )
+        if not unverified_refs:
+            pass_reasons.append("명세 근거의 file_path#RULE-ID가 실제 파일과 loaded 기록으로 검증됐습니다.")
+    elif evidence_text:
+        pass_reasons.append("명세 근거 파일은 있으나 검증할 file_path#RULE-ID 인용은 없습니다.")
+    else:
+        pass_reasons.append("명세 근거가 없어 applied evidence 검증은 생략했습니다.")
+
+    if missing_required_loaded_files:
+        failures.append(
+            "required loaded 기록 누락: "
+            + ", ".join(missing_required_loaded_files)
+            + " (실제 미열람인지 mark-loaded-file.sh 호출 누락인지는 이 로그만으로 구분할 수 없음)"
+        )
+    elif required_loaded_files:
+        pass_reasons.append("required loaded 파일이 모두 기록됐습니다.")
+    else:
+        pass_reasons.append("이번 실행에는 required loaded 정책이 적용되지 않았습니다.")
+
+    if optional_selected_not_loaded:
+        warnings.append(
+            "optional selected 파일에 loaded 기록이 없습니다: "
+            + ", ".join(optional_selected_not_loaded)
+            + " (실제 미참고인지 기록 누락인지는 구분할 수 없음)"
+        )
+    if loaded_not_selected:
+        warnings.append(
+            "selected 후보 밖에서 loaded된 파일이 있습니다: "
+            + ", ".join(loaded_not_selected)
+            + " (예상 밖 추가 참고이거나 selector 보정 후보일 수 있음)"
+        )
+    if policy_paths_not_selected:
+        warnings.append(
+            "trace-policy.json에는 있으나 이번 selected 목록에는 없어 강제하지 않은 파일이 있습니다: "
+            + ", ".join(policy_paths_not_selected)
+        )
+
+    if failures:
+        trace_status = "FAIL"
+    elif warnings:
+        trace_status = "WARNING"
+    else:
+        trace_status = "PASS"
 
     final = {
-        "trace_schema_version": "1.1",
+        "trace_schema_version": "1.2",
         "timestamp": now(),
         "trace_id": trace_id,
         "workflow_step": record.get("workflow_step", ""),
+        "expected_workflow_step": expected_step,
         "request_type": record.get("request_type", ""),
+        "trace_status": trace_status,
         "trace_confidence": trace_confidence,
         "selected_command_files": record.get("selected_command_files", []),
         "selected_reference_files": record.get("selected_reference_files", []),
@@ -300,7 +384,8 @@ def main() -> int:
         "selected_rule_ids": selected_rule_ids,
         "loaded_files": loaded,
         "selected_not_loaded": sorted(selected - loaded_paths),
-        "loaded_not_selected": sorted(loaded_paths - selected),
+        "optional_selected_not_loaded": optional_selected_not_loaded,
+        "loaded_not_selected": loaded_not_selected,
         "loaded_rule_ids": loaded_rule_ids,
         "applied_rule_ids": applied_rule_ids,
         "spec_evidence": {
@@ -320,6 +405,11 @@ def main() -> int:
             "policy_scope": "selected files only; policy paths not selected are reported but not forced",
             "note": "This verifies file/hash/rule citation consistency, not model comprehension.",
         },
+        "trace_reasons": {
+            "pass": pass_reasons,
+            "warning": warnings,
+            "failure": failures,
+        },
     }
 
     session_output = session_dir / "final-runtime-trace.json"
@@ -328,12 +418,19 @@ def main() -> int:
     write_json(latest_output, final)
     print(str(latest_output))
 
-    if args.require_evidence and not evidence_present:
+    if trace_status == "FAIL":
+        print("Trace 검증: FAIL", file=sys.stderr)
+        print_reasons("실패 이유:", failures, sys.stderr)
+        print_reasons("경고:", warnings, sys.stderr)
         return 1
-    if refs and not all(bool(item.get("verified")) for item in refs):
-        return 1
-    if missing_required_loaded_files:
-        return 1
+    if trace_status == "WARNING":
+        print("Trace 검증: WARNING")
+        print_reasons("경고:", warnings)
+        print_reasons("통과 이유:", pass_reasons)
+        return 0
+
+    print("Trace 검증: PASS")
+    print_reasons("통과 이유:", pass_reasons)
     return 0
 
 

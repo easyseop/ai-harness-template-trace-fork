@@ -32,6 +32,18 @@ AI 에이전트 하네스 엔지니어링 + Ouroboros(명세 기반 개발) 통�
 
 Rule ID가 loaded 파일 또는 finalized runtime trace에 없으면 runtime-verified라고 설명하지 마세요.
 
+각 command를 실행할 때는 현재 실행 중인 command 파일 자체를 먼저 loaded로 기록하세요. 설치된 프로젝트에서는 `.claude/commands/<step>.md`, 템플릿 레포에서는 `commands/<step>.md`를 사용합니다.
+
+### Trace 누락 방지
+
+각 command의 업무 본문을 시작하기 전에 반드시 해당 command md의 Trace Metadata를 먼저 수행하세요.
+1. Runtime Trace를 시작합니다.
+2. 현재 command 파일 자체를 loaded로 기록합니다.
+3. command/reference/agent 파일을 실제로 읽을 때마다 즉시 loaded로 기록합니다.
+4. 최종 응답 직전에 final trace gate를 실행합니다.
+
+이 절차를 수행하지 못하면 누락 사유를 밝히고 `Trace 검증: FAIL` 또는 `Trace 검증: WARNING`을 출력하세요. trace가 누락된 산출물을 runtime-verified라고 말하지 마세요.
+
 ### 라우팅 원칙
 
 workflow step 기준으로 selected 파일을 식별하세요.
@@ -44,49 +56,52 @@ workflow step 기준으로 selected 파일을 식별하세요.
 각 주요 단계에서 아래 형식으로 출력하세요.
 
 ```text
-[Harness Trace]
-Current Step:
-Request Type:
-Applied Command Files:
-Applied Reference Files:
-Applied Agent Files:
-Key Rules Applied:
-Trace Confidence:
-Trace Verification:
-Next Step:
+[하네스 추적]
+현재 단계:
+요청 유형:
+적용한 command 파일:
+적용한 reference 파일:
+적용한 agent 파일:
+적용한 핵심 Rule ID:
+산출물:
+Trace 신뢰도:
+Trace 검증:
+다음 단계:
 ```
 
-명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 아래 형식의 `[Spec Evidence]`를 출력하세요. 근거가 없으면 `[Spec Evidence]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 마세요.
+명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 아래 형식의 `[명세 근거]`를 출력하세요. 근거가 없으면 `[명세 근거]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 마세요.
 
 ```text
-[Spec Evidence]
+[명세 근거]
 1. <file_path>#<rule_id>
-   Rule: "<기존 규칙 문장 또는 짧은 요약>"
-   Applied because: <이 규칙이 현재 작업에 적용되는 이유>
+   규칙: "<기존 규칙 문장 또는 짧은 요약>"
+   적용 이유: <이 규칙이 현재 작업에 적용되는 이유>
 ```
 
 부모 Rule ID와 더 구체적인 하위 Rule ID가 함께 있으면, 넓은 부모 ID만 인용하지 말고 `RULE-EVAL-PERSONA-001-02`처럼 현재 판단에 가장 구체적으로 적용되는 하위 Rule ID를 인용하세요.
 
-Runtime Trace 도구가 있으면, Spec Evidence를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 아래 명령을 실행하세요.
+Runtime Trace 도구가 있으면, `[명세 근거]`를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 아래 명령을 실행하세요.
 
 ```bash
 python3 .harness/trace/finalize-runtime-trace.py \
+  --expect-step <step> \
   --evidence-file .harness/trace/current-spec-evidence.md \
   --require-loaded-selected command \
   --policy .harness/trace/trace-policy.json \
   --require-policy
 ```
 
-Spec Evidence를 출력하지 않은 경우에는 `--evidence-file` 없이 아래 명령을 실행하세요.
+`[명세 근거]`를 출력하지 않은 경우에는 `--evidence-file` 없이 아래 명령을 실행하세요.
 
 ```bash
 python3 .harness/trace/finalize-runtime-trace.py \
+  --expect-step <step> \
   --require-loaded-selected command \
   --policy .harness/trace/trace-policy.json \
   --require-policy
 ```
 
-finalized trace가 성공한 경우에만 검증된 trace로 사용하세요. 실패하면 누락된 loaded 파일 또는 불일치한 evidence와 함께 `Trace Verification: FAIL`을 출력하고, runtime verification이 된 것처럼 말하지 마세요. finalized trace가 없으면 runtime verification을 암시하지 말고 사용 가능한 confidence level(`selected_only` 또는 `loaded_files_recorded`)을 명시하세요.
+finalized trace가 성공한 경우에만 검증된 trace로 사용하세요. finalizer가 `PASS`, `WARNING`, `FAIL`과 이유를 출력하면 그 상태와 이유를 사용자에게 그대로 요약하세요. 실패하면 누락된 loaded 파일 또는 불일치한 evidence와 함께 `Trace 검증: FAIL`을 출력하고, runtime verification이 된 것처럼 말하지 마세요. loaded 기록이 없다는 사실만으로 실제 미열람과 `mark-loaded-file.sh` 호출 누락을 구분하지 마세요. finalized trace가 없으면 runtime verification을 암시하지 말고 사용 가능한 confidence level(`selected_only` 또는 `loaded_files_recorded`)을 명시하세요.
 
 ## Structure
 
