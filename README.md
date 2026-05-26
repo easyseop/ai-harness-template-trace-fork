@@ -234,10 +234,12 @@ Trace 검증:
 [명세 근거]
 1. <file_path>#<rule_id>
    규칙: "<기존 규칙 문장 또는 짧은 요약>"
-   적용 이유: <이 규칙이 현재 작업에 적용되는 이유>
+   적용 결과: <이 규칙이 현재 산출물이나 판단에 반영된 결과>
 ```
 
-명시적으로 적용한 `file_path#RULE-ID` 근거가 없으면 `[명세 근거]` 블록을 출력하지 않습니다. 이 경우 `No explicit spec rule found.` 문구도 강제로 출력하지 않습니다.
+`산출물:`은 반드시 채웁니다. 파일 산출물이 있으면 경로와 생성/수정/검증 결과를 적고, 파일 산출물이 없으면 `없음 - <이유>`를 적습니다.
+
+현재 command 파일의 Rule ID도 명시 규칙으로 봅니다. 따라서 command 파일에 Rule ID가 있으면 `[명세 근거]`에 최소 1개 이상 적어야 합니다. 명시적으로 적용한 `file_path#RULE-ID` 근거가 정말 없으면 `[명세 근거]` 블록을 출력하지 않습니다. 이 경우 `No explicit spec rule found.` 문구도 강제로 출력하지 않습니다.
 
 ---
 
@@ -252,14 +254,14 @@ Trace는 단순히 “출력해 주세요”라고만 적어두지 않았습니�
 2. 파일을 읽은 뒤 loaded 기록
    mark-loaded-file.sh --path <file> 실행
 
-3. 명시 근거가 있을 때만 명세 근거 출력
-   근거가 없으면 [명세 근거] 블록을 생략
+3. command Rule ID를 포함해 명시 근거가 있으면 명세 근거 출력
+   적용할 Rule ID가 정말 없을 때만 [명세 근거] 블록을 생략
 
-4. 명세 근거가 있을 때만 저장
+4. command evidence를 포함한 명세 근거 저장
    current-spec-evidence.md 생성
 
 5. 최종 검증
-   명세 근거가 있으면 evidence까지 검증하고, 없으면 loaded 누락 여부만 검증
+   command evidence와 loaded 누락 여부를 검증
 
 6. 검증 상태 출력
    Trace 검증: PASS / WARNING / FAIL과 이유 출력
@@ -286,6 +288,23 @@ finalizer의 의미는 “Claude가 진짜 이해했는지 증명”이 아닙�
 | `trace/mark-loaded-file.sh` | loaded 파일, 해시, Rule ID 기록 |
 | `trace/finalize-runtime-trace.py` | Spec Evidence가 loaded 파일과 Rule ID로 검증되는지 확인 |
 | `trace/trace-policy.json` | step별로 반드시 loaded로 남겨야 할 핵심 파일 정책 |
+
+Trace 명령어와 옵션은 아래처럼 구분해서 보면 됩니다.
+
+| 명령/옵션 | 쓰는 위치 | 의미 | 강제하는 것 | 강제하지 않는 것 |
+|-----------|-----------|------|-------------|------------------|
+| `record-runtime-trace.sh --step <step>` | command 시작 전 | 현재 workflow step의 trace session을 시작합니다. | `workflow_step`, selected 후보 파일 기록 | Claude가 실제로 읽었다는 사실 |
+| `--request-type <type>` | `record-runtime-trace.sh` | 요청 유형을 기록합니다. | request_type metadata | 요청 유형의 정확성 자체 |
+| `--summary "<summary>"` | `record-runtime-trace.sh` | 사용자 요청 요약을 기록합니다. | user_request_summary metadata | 요약의 완전성 |
+| `mark-loaded-file.sh --path <file>` | 파일을 읽은 직후 | Claude가 읽었다고 보고한 파일을 loaded로 기록합니다. | path, sha256, size, mtime, Rule ID 기록 | 실제 이해 여부 |
+| `finalize-runtime-trace.py --expect-step <step>` | 최종 응답 직전 | 현재 command와 Runtime Trace step이 같은지 확인합니다. | 이전 step trace 오사용 방지 | trace 생성 자체의 자동 실행 |
+| `--evidence-file <file>` | `finalize-runtime-trace.py` | `[명세 근거]` 블록 파일을 입력으로 받습니다. | evidence의 file_path#RULE-ID 파싱 | evidence를 대신 생성하는 것 |
+| `--require-command-evidence` | `finalize-runtime-trace.py` | 현재 command 파일 Rule ID가 evidence에 있는지 확인합니다. | 최소 command-level evidence | spec/persona/domain evidence 전체 강제 |
+| `--require-loaded-selected command` | `finalize-runtime-trace.py` | selected command 파일이 loaded로 기록됐는지 확인합니다. | command 파일 loaded 기록 | 모든 selected 파일 loaded |
+| `--policy trace/trace-policy.json` | `finalize-runtime-trace.py` | step별 required loaded 정책 파일을 사용합니다. | policy에 있는 selected 핵심 파일 검사 | selected에 없는 파일 강제 로딩 |
+| `--require-policy` | `finalize-runtime-trace.py` | policy 파일이 없으면 실패시킵니다. | policy 누락 탐지 | policy 내용의 도메인 정답성 |
+
+가장 중요한 옵션은 `--require-command-evidence`입니다. 이것은 모든 Rule Evidence를 억지로 만들라는 뜻이 아니라, 현재 command 파일의 대표 Rule ID만 최소 근거로 강제한다는 뜻입니다. 추가 spec/persona/domain evidence는 실제로 적용했을 때만 적고, 적은 경우에는 finalizer가 실제 파일과 Rule ID, loaded 기록을 검증합니다.
 
 `trace-policy.json`은 selector가 고른 모든 파일을 무조건 강제하는 파일이 아닙니다. **selected 후보 중에서도 꼭 loaded로 남아야 하는 핵심 파일만** 정합니다.
 

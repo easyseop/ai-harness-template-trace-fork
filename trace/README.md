@@ -20,7 +20,7 @@ Claude가 각 단계에서 어떤 파일과 어떤 Rule ID를 근거로 판단�
 
 AI-facing Trace는 가능한 경우 `.harness/trace/latest-runtime-trace-final.json`을 우선 참고해야 합니다. final trace가 없으면 `.harness/trace/latest-runtime-trace.json`을 참고합니다.
 
-Runtime Trace가 없을 때 Claude는 임의로 Rule ID나 evidence를 꾸며내면 안 됩니다. 명시적으로 적용한 `file_path#RULE-ID` 근거가 없으면 `[명세 근거]` 블록을 출력하지 않습니다.
+Runtime Trace가 없을 때 Claude는 임의로 Rule ID나 evidence를 꾸며내면 안 됩니다. 다만 현재 command 파일의 Rule ID는 command 수행 자체에 적용되는 명시 규칙으로 봅니다. 적용할 `file_path#RULE-ID` 근거가 정말 없을 때만 `[명세 근거]` 블록을 출력하지 않습니다.
 
 ## Trace 기본 구조
 
@@ -138,22 +138,22 @@ loaded 강제 정책 = trace-policy.json
 .harness/trace/mark-loaded-file.sh --path "<file>"
 ```
 
-3. Spec Evidence가 있을 때만 블록 저장:
+3. command evidence를 포함한 명세 근거 블록 저장:
 
 ```text
 .harness/trace/current-spec-evidence.md
 ```
 
-4. 명시 근거가 있을 때만 최종 사용자 응답에 명세 근거 출력:
+4. command Rule ID를 포함해 명시 근거가 있으면 최종 사용자 응답에 명세 근거 출력:
 
 ```text
 [명세 근거]
 1. <file_path>#<rule_id>
    규칙: "<기존 규칙 문장 또는 짧은 요약>"
-   적용 이유: <이 규칙이 현재 작업에 적용되는 이유>
+   적용 결과: <이 규칙이 현재 산출물이나 판단에 반영된 결과>
 ```
 
-명시적으로 적용한 `file_path#RULE-ID` 근거가 없으면 `[명세 근거]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않습니다.
+현재 command 파일의 Rule ID는 command 수행 자체에 적용되는 명시 규칙입니다. 적용할 `file_path#RULE-ID` 근거가 정말 없으면 `[명세 근거]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 않습니다.
 
 5. 최종 trace gate 실행:
 
@@ -161,12 +161,13 @@ loaded 강제 정책 = trace-policy.json
 python3 .harness/trace/finalize-runtime-trace.py \
   --expect-step <step> \
   --evidence-file .harness/trace/current-spec-evidence.md \
+  --require-command-evidence \
   --require-loaded-selected command \
   --policy .harness/trace/trace-policy.json \
   --require-policy
 ```
 
-Spec Evidence가 없으면 `--evidence-file` 없이 실행합니다.
+현재 command 파일에도 Rule ID가 없어 명세 근거가 없으면 `--evidence-file` 없이 실행합니다.
 
 ```bash
 python3 .harness/trace/finalize-runtime-trace.py \
@@ -412,27 +413,28 @@ Claude는 command md의 업무 규칙에 따라 실제 판단이나 산출물을
 [명세 근거]
 1. commands/run.md#RULE-RUN-001
    규칙: "<기존 규칙 문장 또는 짧은 요약>"
-   적용 이유: <이 규칙이 현재 작업에 적용되는 이유>
+   적용 결과: <이 규칙이 현재 산출물이나 판단에 반영된 결과>
 ```
 
 명세 근거는 AI-facing Trace의 일부입니다. 즉, 사용자가 화면에서 볼 수 있는 설명입니다.
 
 하지만 여기서 끝나면 Claude의 자기보고에 가깝습니다. 그래서 다음 단계에서 Runtime Trace finalizer가 이 evidence를 검증합니다.
 
-### 6단계. 명세 근거가 있으면 Runtime Trace로 검증
+### 6단계. Runtime Trace로 command evidence 검증
 
-Claude는 명세 근거를 출력한 경우에만 해당 블록을 파일로 저장하고 finalizer를 실행합니다.
+Claude는 command evidence를 포함한 명세 근거 블록을 파일로 저장하고 finalizer를 실행합니다.
 
 ```bash
 python3 .harness/trace/finalize-runtime-trace.py \
   --expect-step <step> \
   --evidence-file .harness/trace/current-spec-evidence.md \
+  --require-command-evidence \
   --require-loaded-selected command \
   --policy .harness/trace/trace-policy.json \
   --require-policy
 ```
 
-명세 근거가 없으면 `--evidence-file` 없이 finalizer를 실행합니다.
+현재 command 파일에도 Rule ID가 없어 명세 근거가 없으면 `--evidence-file` 없이 finalizer를 실행합니다.
 
 finalizer는 다음을 확인합니다.
 
@@ -488,7 +490,7 @@ applied_evidence_mismatch
 
 ### 7단계. AI-facing Trace 출력
 
-마지막으로 Claude는 사용자에게 `[하네스 추적]`과, 근거가 있을 때만 `[명세 근거]`를 출력합니다.
+마지막으로 Claude는 사용자에게 `[하네스 추적]`과 `[명세 근거]`를 출력합니다. 현재 command 파일에 Rule ID가 있다면 command evidence는 반드시 포함하고, 추가 spec/persona/domain evidence는 실제로 적용했을 때만 포함합니다.
 
 이때 AI-facing Trace는 가능한 경우 Runtime Trace final 결과를 기준으로 작성해야 합니다.
 
@@ -546,7 +548,7 @@ Harness Trace는 Claude의 숨은 사고 과정을 보여준다고 주장하지 
 |------|-----------|-----------|--------------------|
 | 이 단계에서 어떤 파일이 참고 후보였나? | `selected_command_files`, `selected_reference_files`, `selected_agent_files` | `record-runtime-trace.sh`의 step별 selector | Claude가 실제로 그 파일을 읽었다는 것 |
 | 어떤 파일을 읽었다고 기록했나? | `loaded_files` | `mark-loaded-file.sh`가 path, sha256, size, mtime, Rule ID 기록 | Claude가 그 파일을 완전히 이해했다는 것 |
-| 어떤 Rule ID를 적용 근거로 제시했나? | `applied_rule_ids`, `spec_evidence.references` | `finalize-runtime-trace.py`가 `file_path#RULE-ID`를 loaded 파일과 대조 | 적용 이유가 의미적으로 완벽하다는 것 |
+| 어떤 Rule ID를 적용 근거로 제시했나? | `applied_rule_ids`, `spec_evidence.references` | `finalize-runtime-trace.py`가 `file_path#RULE-ID`를 loaded 파일과 대조 | 적용 결과가 의미적으로 완벽하다는 것 |
 | 산출물이 규칙을 실제로 지켰나? | replay/gate/evaluate 결과 | output assertion, forbidden pattern, gate, evaluate | 모든 도메인 의미의 완전한 정답성 |
 
 신뢰도는 이렇게 해석합니다.
@@ -627,12 +629,13 @@ Claude가 파일을 읽었다고 판단
 .harness/trace/mark-loaded-file.sh --path ARCHITECTURE_INVARIANTS.md
 ```
 
-3. Spec Evidence가 있을 때만 파일로 저장한 뒤 applied evidence를 검증합니다.
+3. 명세 근거를 파일로 저장한 뒤 applied evidence를 검증합니다.
 
 ```bash
 python3 .harness/trace/finalize-runtime-trace.py \
   --expect-step run \
   --evidence-file .harness/trace/current-spec-evidence.md \
+  --require-command-evidence \
   --require-loaded-selected command \
   --policy .harness/trace/trace-policy.json \
   --require-policy
@@ -644,6 +647,28 @@ python3 .harness/trace/finalize-runtime-trace.py \
 .harness/trace/latest-runtime-trace-final.json
 .harness/trace/sessions/<trace_id>/final-runtime-trace.json
 ```
+
+## Trace 명령어와 옵션
+
+| 명령/옵션 | 언제 쓰나 | 의미 | 실패/경고 조건 |
+|-----------|-----------|------|----------------|
+| `record-runtime-trace.sh` | command 시작 전 | Runtime Trace session을 만들고 selected 후보 파일을 기록합니다. | `--step`이 없으면 실패 |
+| `--step <step>` | `record-runtime-trace.sh` | `/run`, `/evaluate` 같은 현재 workflow step을 기록합니다. | 비어 있으면 trace 시작 실패 |
+| `--request-type <type>` | `record-runtime-trace.sh` | 요청 유형 metadata를 기록합니다. | 값이 부정확해도 스크립트가 검증하지는 않음 |
+| `--summary "<summary>"` | `record-runtime-trace.sh` | 사용자 요청 요약을 기록합니다. | 값이 없어도 실행 가능 |
+| `mark-loaded-file.sh` | 파일을 읽은 직후 | 파일 경로, 해시, 크기, 수정 시간, Rule ID를 loaded 기록으로 남깁니다. | 파일이 없거나 trace_id를 못 찾으면 실패 |
+| `--path <file>` | `mark-loaded-file.sh` | loaded로 남길 파일 경로입니다. | 파일이 없으면 실패 |
+| `--trace-id <id>` | `mark-loaded-file.sh` | 특정 trace session에 loaded 기록을 남깁니다. | 없으면 latest trace를 사용 |
+| `finalize-runtime-trace.py` | 최종 응답 직전 | selected, loaded, evidence를 대조해 final trace를 만듭니다. | 검증 결과에 따라 PASS/WARNING/FAIL |
+| `--expect-step <step>` | `finalize-runtime-trace.py` | finalizer가 검증하는 trace가 현재 command step인지 확인합니다. | 다른 step trace면 FAIL |
+| `--evidence-file <file>` | `finalize-runtime-trace.py` | `[명세 근거]` 블록 파일을 입력으로 받습니다. | 파일이 없으면 실패 |
+| `--require-command-evidence` | `finalize-runtime-trace.py` | 현재 command 파일의 `file_path#RULE-ID` evidence를 필수로 요구합니다. | command evidence가 없거나 검증 실패하면 FAIL |
+| `--require-loaded-selected command` | `finalize-runtime-trace.py` | selected command 파일이 loaded에 있는지 확인합니다. | command 파일 loaded 기록이 없으면 FAIL |
+| `--require-loaded-selected all` | `finalize-runtime-trace.py` | 모든 selected 파일이 loaded에 있는지 확인합니다. | 너무 강하므로 일반 workflow에는 권장하지 않음 |
+| `--policy <trace-policy.json>` | `finalize-runtime-trace.py` | step별 required loaded 정책을 적용합니다. | policy의 selected 핵심 파일이 loaded에 없으면 FAIL |
+| `--require-policy` | `finalize-runtime-trace.py` | policy 파일이 없거나 읽을 수 없으면 실패시킵니다. | policy 파일 누락 시 FAIL |
+
+`--require-command-evidence`는 hallucination을 줄이기 위한 절충안입니다. 현재 command 파일의 대표 Rule ID는 최소 실행 근거로 강제하지만, spec/persona/domain Rule ID는 실제로 적용했을 때만 적습니다. 즉, evidence 누락은 줄이되 억지 Rule ID 생성을 강요하지 않는 방식입니다.
 
 ## Runtime Trace 스키마
 
@@ -745,10 +770,10 @@ Trace 검증:
 [명세 근거]
 1. <file_path>#<rule_id>
    규칙: "<기존 규칙 문장 또는 짧은 요약>"
-   적용 이유: <이 규칙이 현재 작업에 적용되는 이유>
+   적용 결과: <이 규칙이 현재 산출물이나 판단에 반영된 결과>
 ```
 
-명시적으로 적용할 규칙을 찾지 못한 경우에는 근거를 꾸며내지 말고 `[명세 근거]` 블록을 생략합니다.
+명시적으로 적용할 규칙을 찾지 못한 경우에는 근거를 꾸며내지 말고 `[명세 근거]` 블록을 생략합니다. 하지만 현재 command 파일에 Rule ID가 있다면 그 Rule ID는 command 수행 자체의 명시 규칙으로 취급합니다.
 
 ## Replay와의 관계
 

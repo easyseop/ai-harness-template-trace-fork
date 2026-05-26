@@ -53,7 +53,12 @@ def now() -> str:
 
 
 def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(
+            f"JSON 문법 오류: {path} line {exc.lineno}, column {exc.colno}: {exc.msg}"
+        ) from exc
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -63,7 +68,12 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
-        records.append(json.loads(line))
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            raise SystemExit(
+                f"JSONL 문법 오류: {path} line {len(records) + 1}, column {exc.colno}: {exc.msg}"
+            ) from exc
     return records
 
 
@@ -223,12 +233,17 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--trace-id")
     parser.add_argument("--expect-step", help="Fail if the runtime trace workflow_step is not this step.")
-    parser.add_argument("--evidence-file", help="File containing the final Spec Evidence block")
+    parser.add_argument("--evidence-file", help="File containing the final [명세 근거] block")
     parser.add_argument("--allow-missing-evidence", action="store_true")
     parser.add_argument(
         "--require-evidence",
         action="store_true",
-        help="Fail unless Spec Evidence contains file_path#RULE-ID references or No explicit spec rule found.",
+        help="Fail unless [명세 근거] contains file_path#RULE-ID references.",
+    )
+    parser.add_argument(
+        "--require-command-evidence",
+        action="store_true",
+        help="Fail unless [명세 근거] contains a verified file_path#RULE-ID reference for the current command file.",
     )
     parser.add_argument(
         "--require-loaded-selected",
@@ -294,6 +309,10 @@ def main() -> int:
         all_refs_verified = None
 
     evidence_present = bool(refs) or no_explicit_spec_rule_found
+    command_paths = {str(item) for item in (record.get("selected_command_files") or [])}
+    command_refs = [item for item in refs if str(item.get("path", "")) in command_paths]
+    verified_command_refs = [item for item in command_refs if bool(item.get("verified"))]
+    command_evidence_satisfied = bool(verified_command_refs) or not args.require_command_evidence
     evidence_required_satisfied = evidence_present or not args.require_evidence
     required_loaded_files_satisfied = not missing_required_loaded_files
     optional_selected_not_loaded = sorted((selected - required_loaded_files) - loaded_paths)
@@ -311,6 +330,23 @@ def main() -> int:
 
     if args.require_evidence and not evidence_present:
         failures.append("명세 근거가 필요한 모드인데 evidence가 없습니다.")
+    if args.require_command_evidence:
+        if not command_paths:
+            failures.append("command evidence가 필요한데 selected_command_files가 없습니다.")
+        elif not evidence_text:
+            failures.append(
+                "command evidence가 필요한데 [명세 근거] 파일이 없습니다. "
+                "현재 command 파일의 file_path#RULE-ID를 최소 1개 포함해야 합니다."
+            )
+        elif not command_refs:
+            failures.append(
+                "command evidence가 필요한데 [명세 근거]에 현재 command 파일 Rule ID가 없습니다: "
+                + ", ".join(sorted(command_paths))
+            )
+        elif not verified_command_refs:
+            failures.append(
+                "현재 command 파일 Rule ID가 [명세 근거]에 있으나 파일/Rule ID/loaded 기록 검증을 통과하지 못했습니다."
+            )
     if refs:
         unverified_refs = [item for item in refs if not bool(item.get("verified"))]
         for item in unverified_refs:
@@ -327,6 +363,8 @@ def main() -> int:
             )
         if not unverified_refs:
             pass_reasons.append("명세 근거의 file_path#RULE-ID가 실제 파일과 loaded 기록으로 검증됐습니다.")
+            if verified_command_refs:
+                pass_reasons.append("현재 command 파일 Rule ID가 [명세 근거]에서 검증됐습니다.")
     elif evidence_text:
         pass_reasons.append("명세 근거 파일은 있으나 검증할 file_path#RULE-ID 인용은 없습니다.")
     else:
@@ -369,7 +407,7 @@ def main() -> int:
         trace_status = "PASS"
 
     final = {
-        "trace_schema_version": "1.2",
+        "trace_schema_version": "1.3",
         "timestamp": now(),
         "trace_id": trace_id,
         "workflow_step": record.get("workflow_step", ""),
@@ -396,6 +434,10 @@ def main() -> int:
             "all_applied_evidence_verified": all_refs_verified,
             "evidence_required": args.require_evidence,
             "evidence_required_satisfied": evidence_required_satisfied,
+            "command_evidence_required": args.require_command_evidence,
+            "command_evidence_satisfied": command_evidence_satisfied,
+            "command_evidence_files": sorted(command_paths),
+            "command_evidence_references": command_refs,
             "required_loaded_files_satisfied": required_loaded_files_satisfied,
             "required_loaded_files": sorted(required_loaded_files),
             "missing_required_loaded_files": missing_required_loaded_files,

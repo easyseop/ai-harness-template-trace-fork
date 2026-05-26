@@ -32,19 +32,17 @@ timestamp() {
 }
 
 json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g'
+  python3 -c 'import json, sys; print(json.dumps(sys.argv[1], ensure_ascii=False)[1:-1])' "$1"
 }
 
 json_array() {
-  local first=1
-  printf '['
-  for item in "$@"; do
-    [ -n "$item" ] || continue
-    if [ "$first" -eq 0 ]; then printf ','; fi
-    printf '"%s"' "$(json_escape "$item")"
-    first=0
-  done
-  printf ']'
+  python3 - "$@" <<'PY'
+import json
+import sys
+
+items = [item for item in sys.argv[1:] if item]
+print(json.dumps(items, ensure_ascii=False, separators=(",", ":")))
+PY
 }
 
 add_if_exists() {

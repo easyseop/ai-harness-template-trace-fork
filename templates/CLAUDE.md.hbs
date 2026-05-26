@@ -197,29 +197,32 @@ Trace 검증:
 다음 단계:
 ```
 
-명시적으로 적용한 `file_path#RULE-ID` 근거가 있을 때만 아래 형식의 `[명세 근거]`를 출력하세요. 근거가 없으면 `[명세 근거]` 블록과 `No explicit spec rule found.` 문구를 강제로 출력하지 마세요.
+`산출물:`은 비워두지 마세요. 파일 산출물이 있으면 경로와 생성/수정/검증 결과를 쓰고, 파일 산출물이 없으면 `없음 - <이유>`를 명시하세요.
+
+각 command 수행 자체는 현재 command 파일의 Rule ID를 적용하는 것으로 간주합니다. 따라서 현재 command 파일에 Rule ID가 있으면 `[명세 근거]`에 최소 1개 이상 포함하세요. 명시적으로 적용한 `file_path#RULE-ID` 근거가 정말 없을 때만 `[명세 근거]` 블록을 생략하고, `No explicit spec rule found.` 문구도 강제로 출력하지 마세요.
 
 ```text
 [명세 근거]
 1. <file_path>#<rule_id>
    규칙: "<기존 규칙 문장 또는 짧은 요약>"
-   적용 이유: <이 규칙이 현재 작업에 적용되는 이유>
+   적용 결과: <이 규칙이 현재 산출물이나 판단에 반영된 결과>
 ```
 
 부모 Rule ID와 더 구체적인 하위 Rule ID가 함께 있으면, 넓은 부모 ID만 인용하지 말고 `RULE-EVAL-PERSONA-001-02`처럼 현재 판단에 가장 구체적으로 적용되는 하위 Rule ID를 인용하세요.
 
-Runtime Trace 도구가 있으면, `[명세 근거]`를 출력한 경우에만 그 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 아래 명령을 실행하세요.
+Runtime Trace 도구가 있으면, `[명세 근거]` 블록을 `.harness/trace/current-spec-evidence.md`에 저장하고 아래 명령을 실행하세요.
 
 ```bash
 python3 .harness/trace/finalize-runtime-trace.py \
   --expect-step <step> \
   --evidence-file .harness/trace/current-spec-evidence.md \
+  --require-command-evidence \
   --require-loaded-selected command \
   --policy .harness/trace/trace-policy.json \
   --require-policy
 ```
 
-`[명세 근거]`를 출력하지 않은 경우에는 `--evidence-file` 없이 아래 명령을 실행하세요.
+현재 command 파일에도 Rule ID가 없어 `[명세 근거]`를 출력하지 않은 경우에만 `--evidence-file` 없이 아래 명령을 실행하세요.
 
 ```bash
 python3 .harness/trace/finalize-runtime-trace.py \

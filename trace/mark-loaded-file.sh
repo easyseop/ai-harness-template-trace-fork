@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Mark a file as actually loaded/read for the current Runtime Trace session.
 # This does not prove model comprehension; it records a verifiable file path,
-# file hash, and Rule IDs for later Spec Evidence validation.
+# file hash, and Rule IDs for later [명세 근거] validation.
 #
 # Usage:
 #   .harness/trace/mark-loaded-file.sh --path docs/TRD.md
@@ -34,7 +34,14 @@ if [ -z "$TRACE_ID" ]; then
     echo "No latest runtime trace found. Run record-runtime-trace.sh first." >&2
     exit 1
   fi
-  TRACE_ID="$(sed -n 's/.*"trace_id":"\([^"]*\)".*/\1/p' "$LATEST" | head -n 1)"
+  TRACE_ID="$(python3 - "$LATEST" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    print(json.load(handle).get("trace_id", ""))
+PY
+)"
 fi
 
 if [ -z "$TRACE_ID" ]; then
@@ -60,19 +67,17 @@ timestamp() {
 }
 
 json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g'
+  python3 -c 'import json, sys; print(json.dumps(sys.argv[1], ensure_ascii=False)[1:-1])' "$1"
 }
 
 json_array() {
-  local first=1
-  printf '['
-  for item in "$@"; do
-    [ -n "$item" ] || continue
-    if [ "$first" -eq 0 ]; then printf ','; fi
-    printf '"%s"' "$(json_escape "$item")"
-    first=0
-  done
-  printf ']'
+  python3 - "$@" <<'PY'
+import json
+import sys
+
+items = [item for item in sys.argv[1:] if item]
+print(json.dumps(items, ensure_ascii=False, separators=(",", ":")))
+PY
 }
 
 SHA256="$(shasum -a 256 "$FULL_PATH" | awk '{print $1}')"
